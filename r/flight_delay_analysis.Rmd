@@ -1,0 +1,911 @@
+---
+title: "Flight Delay Analysis and Prediction (R)"
+author: "Matthew James Tan"
+output: html_document
+---
+
+Analysis of US domestic flights 2004–2008 (ASA Data Expo 2009). See the repo README for context and results.
+
+
+Loading libraries (install any missing ones with install.packages())
+```{r}
+
+library(usmap)
+library(future)
+library(DBI)
+library(dplyr)
+library(ggplot2)
+library(ggrepel)
+library(ggthemes)
+library(extrafont)
+library(cowplot)
+library(scales)
+library(skimr)
+library(mlr3)
+library(mlr3learners)
+library(mlr3pipelines)
+library(mlr3tuning)
+library(glmnet)
+library(ranger)
+library(xgboost)
+library(e1071)
+library(pROC)
+library(paradox)
+library(mlr3viz)
+library(precrec)
+library(RColorBrewer)
+```
+
+```{r}
+library(rlang)
+```
+
+
+Setting the data folder
+```{r setup, include=FALSE}
+# Folder holding the downloaded CSVs (see data/README.md)
+knitr::opts_knit$set(root.dir = '../data')
+```
+
+# Creating database
+
+```{r}
+library(DBI)
+library(RSQLite)
+
+if (file.exists("airline.db")) 
+  file.remove("airline.db")
+conn <- dbConnect(RSQLite::SQLite(), "airline.db")
+```
+
+Load in data from csv files
+```{r}
+airports <- read.csv("airports.csv", header = TRUE)
+carriers <- read.csv("carriers.csv", header = TRUE)
+planes <- read.csv("plane-data.csv", header = TRUE)
+dbWriteTable(conn, "airports", airports, overwrite = TRUE)
+dbWriteTable(conn, "carriers", carriers, overwrite = TRUE)
+dbWriteTable(conn, "planes", planes, overwrite = TRUE)
+
+
+folder_path <- "./"
+
+for(i in 2004:2008) {
+  full_file_path <- paste0(folder_path, i, ".csv.bz2")
+  
+  message("Reading compressed file: ", full_file_path)
+  
+  if (file.exists(full_file_path)) {
+    flightdetails <- na.omit(read.csv(full_file_path, header = TRUE))
+    
+    if(i == 2004) {
+      dbWriteTable(conn, "flightdetails", flightdetails, overwrite = TRUE)
+    } else {
+      dbWriteTable(conn, "flightdetails", flightdetails, append = TRUE)
+    }
+    
+    rm(flightdetails)
+    gc() 
+  }
+}
+```
+
+# ---Determining lower limit of a delay---
+
+Determining relationships in Arrivals and Departure Delays 
+```{r}
+flight_subset <- dbGetQuery(conn, "
+  SELECT ArrDelay, DepDelay, CarrierDelay, WeatherDelay, 
+         NASDelay, SecurityDelay, LateAircraftDelay 
+  FROM flightdetails
+")
+
+ArrDelayModel <- lm(ArrDelay ~ CarrierDelay + WeatherDelay + NASDelay + 
+                    SecurityDelay + LateAircraftDelay, data = flight_subset)
+
+DepDelayModel <- lm(DepDelay ~ CarrierDelay + WeatherDelay + NASDelay + 
+                    SecurityDelay + LateAircraftDelay, data = flight_subset)
+
+ArrDepDelay <- data.frame(
+  Measure = c("Arrival Delay", "Departure Delay"),
+  R2 = c(summary(ArrDelayModel)$r.squared, summary(DepDelayModel)$r.squared),
+  Adjusted_R2 = c(summary(ArrDelayModel)$adj.r.squared, summary(DepDelayModel)$adj.r.squared),
+  F_Statistic = c(summary(ArrDelayModel)$fstatistic[1], summary(DepDelayModel)$fstatistic[1])
+)
+
+ArrDepDelay
+```
+
+Reviewing distribution of duration of arrival delays (removing extremes more than 6 hours)
+```{r}
+library(ggplot2)
+library(scales)
+
+DistributionOfArrDelay <- dbGetQuery(conn, "SELECT ArrDelay, COUNT(ArrDelay) AS Frequency
+                                            FROM flightdetails
+                                            WHERE ArrDelay >0
+                                            GROUP BY ArrDelay")
+
+ggplot(DistributionOfArrDelay, aes(x = ArrDelay, y = Frequency)) +
+  geom_bar(stat = "identity", fill = "#00798c", width = 2) +
+  scale_y_continuous(labels = unit_format(unit = "", scale = 1e-6)) +
+  scale_x_continuous(limits = c(-10, 360), expand = c(0, 0)) +
+  labs(title = "Frequency of Flight Delays by Arrival Delay",
+       subtitle = "The distribution of arrival delays is positively skewed",
+       x = "Arrival Delay (Minutes)", 
+       y = "Frequency of Arrival Delays (Million)") +
+  theme_minimal(base_size = 13) +
+  theme(axis.title = element_text(), text = element_text("Times New Roman")) +
+  geom_vline(xintercept = 14, linetype = "dashed", color = "#003f5c", size = 0.5) +
+  annotate("text", x = 57, y = 500000, label = "Median = 14 Minutes", color = "black", vjust = -0.5, hjust = 0.5, family = "Times New Roman")
+```
+
+Determining the duration of 'ArrDelay' that counts as a delay (Since positive, median is a better measure)
+```{r}
+dbGetQuery(conn, "SELECT median(ArrDelay) FROM flightdetails WHERE ArrDelay > 0")
+```
+
+# ---Q1. best time of the day to fly to minimize delays--- 
+
+Categorizing time of day to night, morning, afternoon, evening
+```{r}
+dbExecute(conn, "ALTER TABLE flightdetails ADD COLUMN DepTimeOfDay TEXT")
+dbExecute(conn, "UPDATE flightdetails SET DepTimeOfDay = 
+             CASE 
+                WHEN DepTime BETWEEN 500 AND 1159 THEN 'Morning'
+                WHEN DepTime BETWEEN 1200 AND 1659 THEN 'Afternoon'
+                WHEN DepTime BETWEEN 1700 AND 2059 THEN 'Evening'
+                ELSE 'Night'
+             END;")
+```
+
+Calculate frequency of delays according to time of day
+```{r}
+Q1_TimeOfDay <- dbGetQuery(conn, "SELECT DepTimeOfDay AS Time_of_Day, SUM(CASE WHEN ArrDelay >= 15 THEN 1 ELSE 0 END)/CAST(COUNT(ArrDelay) AS float) AS Chance_Of_Delay
+                                  FROM flightdetails
+                                  GROUP BY DepTimeOfDay
+                                  ORDER BY 
+                                  CASE DepTimeOfDay
+                                    WHEN 'Morning' THEN 1
+                                    WHEN 'Afternoon' THEN 2
+                                    WHEN 'Evening' THEN 3
+                                    ELSE 4
+                                    END")
+```
+
+Plot frequency of delayed flights by time of day
+```{r}
+ggplot(Q1_TimeOfDay, aes(x = factor(Time_of_Day, levels = c("Morning", "Afternoon", "Evening", "Night")), y = Chance_Of_Delay, label = scales::percent(Chance_Of_Delay), fill = Time_of_Day)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = c("Morning" = "#003f5c", "Afternoon" = "#00798c", "Evening" = "#00798c", "Night" = "#00798c")) +
+  labs(title = "Percentage of Flights Delayed by Time of Day", 
+       subtitle = "Flights in the morning have the lowest percentage of flights delayed",
+       x = "Time of Day", y = "Percentage") +
+  theme_minimal(base_size = 13) +
+  theme(axis.title = element_text(), text = element_text("Times New Roman")) +
+  geom_text(vjust = -0.5 , size = 4, family = "Times New Roman") +
+  guides(fill = FALSE)
+```
+
+# ---Q1. best day of week to fly to minimize delays---
+
+Categorizing day of week to respective days in words
+```{r}
+dbExecute(conn, "ALTER TABLE flightdetails ADD COLUMN FullDayOfWeek TEXT")
+dbExecute(conn, "UPDATE flightdetails SET FullDayOfWeek = 
+                   CASE 
+                      WHEN DayOfWeek IS 1 THEN 'Monday'
+                      WHEN DayOfWeek IS 2 THEN 'Tuesday'
+                      WHEN DayOfWeek IS 3 THEN 'Wednesday'
+                      WHEN DayOfWeek IS 4 THEN 'Thursday'
+                      WHEN DayOfWeek IS 5 THEN 'Friday'
+                      WHEN DayOfWeek IS 6 THEN 'Saturday'
+                      ELSE 'Sunday'
+                      END;")
+```
+
+Calculate frequency of delays according to day of week
+```{r}
+Q1_DayOfWeek <- dbGetQuery(conn, "SELECT FullDayOfWeek AS Day_of_Week, SUM(CASE WHEN ArrDelay >= 15 THEN 1 ELSE 0 END)/CAST(COUNT(ArrDelay) AS float) AS Chance_Of_Delay
+                                  FROM flightdetails
+                                  GROUP BY FullDayOfWeek
+                                  ORDER BY 
+                                    CASE FullDayOfWeek
+                                        WHEN 'Monday' THEN 1
+                                        WHEN 'Tuesday' THEN 2
+                                        WHEN 'Wednesday' THEN 3
+                                        WHEN 'Thursday' THEN 4
+                                        WHEN 'Friday' THEN 5
+                                        WHEN 'Saturday' THEN 6
+                                        ELSE 7
+                                        END")
+```
+
+Plot frequency of delayed flights by day of week
+```{r}
+ggplot(Q1_DayOfWeek, aes(x = factor(Day_of_Week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")), y = Chance_Of_Delay, label = scales::percent(Chance_Of_Delay), fill = Day_of_Week)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = c("Monday" = "#00798c", "Tuesday" = "#00798c", "Wednesday" = "#00798c", "Thursday" = "#00798c", "Friday" = "#00798c", "Sunday" = "#00798c","Saturday" = "#003f5c")) +
+  labs(title = "Percentage of Flights Delayed by Day of Week", 
+       subtitle = "Flights on Saturday have the lowest percentage of flights delayed",
+       x = "Day of Week", y = "Percentage") +
+  theme_minimal(base_size = 13) +
+  theme(axis.title = element_text(), text = element_text("Times New Roman")) +
+  geom_text(vjust = -0.5 , size = 4, family = "Times New Roman") +
+  guides(fill = FALSE)
+```
+
+# ---Q1. best time of year to fly to minimize delays---
+
+Categorizing months to seasons/time of year
+```{r}
+dbExecute(conn, "ALTER TABLE flightdetails ADD COLUMN TimeOfYear TEXT")
+dbExecute(conn, "UPDATE flightdetails SET TimeOfYear = 
+                   CASE 
+                      WHEN Month BETWEEN 3 AND 5 THEN 'Spring'
+                      WHEN Month BETWEEN 6 AND 8 THEN 'Summer'
+                      WHEN Month BETWEEN 9 AND 11 THEN 'Autumn'
+                      ELSE 'Winter'
+                   END;")
+```
+
+Calculate frequency of delays according to time of year
+```{r}
+Q1_TimeOfYear <- dbGetQuery(conn, 
+                           "SELECT TimeOfYear AS Time_of_Year, SUM(CASE WHEN ArrDelay >= 15 THEN 1 ELSE 0 END)/CAST(COUNT(ArrDelay) AS float) AS Chance_Of_Delay
+                            FROM flightdetails
+                            GROUP BY TimeOfYear
+                            ORDER BY 
+                              CASE TimeOfYear
+                                  WHEN 'Spring' THEN 1
+                                  WHEN 'Summer' THEN 2
+                                  WHEN 'Autumn' THEN 3
+                                  ELSE 4
+                                  END")
+```
+
+Plot frequency of delayed flights by time of year
+```{r}
+ggplot(Q1_TimeOfYear, aes(x = factor(Time_of_Year, levels = c("Spring", "Summer", "Autumn", "Winter")), y = Chance_Of_Delay, label = scales::percent(Chance_Of_Delay), fill = Time_of_Year)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = c("Summer" = "#00798c", "Autumn" = "#003f5c", "Winter" = "#00798c", "Spring" = "#00798c")) +
+  labs(title = "Percentage of Flights Delayed by Time of Year", 
+       subtitle = "Flights in Autumn have the lowest percentage of flights delayed",
+       x = "Day of Week", y = "Percentage") +
+  theme_minimal(base_size = 13) +
+  theme(axis.title = element_text(), text = element_text("Times New Roman")) +
+  geom_text(vjust = -0.5, size = 4, family = "Times New Roman") +
+  guides(fill = FALSE)
+```
+
+# ---Q2. do older planes suffer more delays---
+
+Determining age of each plane respective to year flown
+```{r}
+dbExecute(conn, "ALTER TABLE flightdetails ADD COLUMN CurrentDate INTEGER")
+dbExecute(conn, "UPDATE flightdetails
+                 SET CurrentDate = STRFTIME('%d/%m/%Y', Year || '-' || 
+                   CASE 
+                     WHEN LENGTH(Month) = 1 THEN '0' || Month 
+                     ELSE Month 
+                   END || '-' ||
+                   CASE 
+                     WHEN LENGTH(DayofMonth) = 1 THEN '0' || DayofMonth 
+                     ELSE DayofMonth 
+                   END)")
+
+dbExecute(conn, "ALTER TABLE flightdetails ADD COLUMN AgeOfPlane INTEGER")
+dbExecute(conn, "UPDATE flightdetails
+                 SET AgeOfPlane = 
+                 CASE 
+                     WHEN (julianday(strftime('%Y-%m-%d', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2))) - julianday(strftime('%Y-%m-%d', planes.year || '-01-01')))/365 < 2000 THEN CAST(((julianday(strftime('%Y-%m-%d', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2))) - julianday(strftime('%Y-%m-%d', planes.year || '-01-01')))/365) AS float)
+                     ELSE NULL 
+                 END
+                 FROM planes 
+                 WHERE flightdetails.TailNum = planes.tailnum")
+```
+
+Pull the tail number of flights that have ages less than zero
+```{r}
+AgeAbnormalities <- dbGetQuery(conn, "SELECT flightdetails.TailNum, planes.year, flightdetails.CurrentDate
+                                      FROM flightdetails
+                                      INNER JOIN planes ON flightdetails.TailNum = planes.tailnum
+                                      WHERE flightdetails.AgeOfPlane < 0
+                                      GROUP BY flightdetails.TailNum
+                                      ORDER BY flightdetails.TailNum")
+
+print(AgeAbnormalities)
+```
+
+Categorize planes based on their age
+```{r}
+dbExecute(conn, "ALTER TABLE flightdetails ADD COLUMN AgeCategory")
+dbExecute(conn, "UPDATE flightdetails
+                 SET AgeCategory = CASE 
+                                        WHEN AgeOfPlane IS NULL THEN NULL
+                                        WHEN AgeOfPlane BETWEEN -5 AND 10 THEN 'New Aircraft'
+                                        WHEN AgeOfPlane BETWEEN 10 AND 20 THEN 'Standard Aircraft'
+                                        ELSE 'Old Aircraft' 
+                                    END")
+```
+
+Calculate frequency of delays respective to age of plane
+```{r}
+Q2_AgeOfPlane <- dbGetQuery(conn, "SELECT AgeCategory AS Age_Category, SUM(CASE WHEN ArrDelay >= 15 THEN 1 ELSE 0 END)/CAST(COUNT(ArrDelay) AS float) AS Chance_Of_Delay
+                                    FROM flightdetails
+                                    WHERE AgeCategory IS NOT NULL
+                                    GROUP BY AgeCategory
+                                    ORDER BY AgeCategory")
+```
+
+Plot percentage of flights delayed by age category
+```{r}
+ggplot(Q2_AgeOfPlane, aes(x = factor(Age_Category, levels = c("New Aircraft", "Standard Aircraft", "Old Aircraft")), y = Chance_Of_Delay, label = scales::percent(Chance_Of_Delay), fill = Age_Category)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = c("New Aircraft" = "#00798c", "Standard Aircraft" = "#00798c", "Old Aircraft" = "#003f5c")) +
+  labs(title = "Percentage of Flights Delayed by Age Category",subtitles = "Older planes have the highest percentage of flights delayed",x = "Age Categories", y = "Percentage") +
+  geom_text(vjust = -0.5, size = 4, family = "Times New Roman") +
+  theme_minimal(base_size = 13) +
+  theme(axis.title = element_text(), text = element_text("Times New Roman")) +
+  guides(fill = FALSE) 
+```
+
+Calculate duration of delays respective to age of plane
+```{r}
+Q2_AgeOfPlaneDelays <- dbGetQuery(conn, "SELECT AgeCategory AS Age_Category, ArrDelay AS Duration_Of_Delays
+    FROM flightdetails
+    WHERE AgeCategory IS NOT NULL AND ArrDelay >= 15
+    ORDER BY AgeCategory")
+```
+
+Plot duration of delays respective to age of plane
+```{r}
+ggplot(Q2_AgeOfPlaneDelays, aes(x = factor(Age_Category, levels = c("New Aircraft", "Standard Aircraft", "Old Aircraft")), y = Duration_Of_Delays, fill = Age_Category)) +
+  geom_violin(draw_quantiles = 0.5) +
+  geom_boxplot(width = 0.1, fill = "#a9b2bb", outlier.color = NA) +
+  scale_fill_manual(values = c("New Aircraft" = "#00798c", "Standard Aircraft" = "#00798c", "Old Aircraft" = "#005b7a")) +
+  geom_hline(yintercept = 33, linetype = "dashed", color = "black") + 
+  geom_hline(yintercept = 56, linetype = "dashed", color = "black") +
+  ylim(15, 150) +
+  labs(title = "Duration of Flight Delays by Age Category", subtitle = "Older planes the lowest median and upper quartile of delays",x = "Age Category", y = "Duration of Delays") +
+  theme_minimal(base_size = 13) +
+  theme(axis.title = element_text(), text = element_text("Times New Roman")) +
+  stat_summary(fun = "median", geom = "text", aes(label = paste0("", round(..y..))), vjust = -0.5, size = 4, family = "Times New Roman") +
+  guides(fill = FALSE)
+```
+
+Compute medians of respective age categories
+```{r}
+dbGetQuery(conn, "SELECT median(ArrDelay) FROM flightdetails WHERE ArrDelay >= 15 AND AgeCategory = 'Old Aircraft'")  
+dbGetQuery(conn, "SELECT median(ArrDelay) FROM flightdetails WHERE ArrDelay >= 15 AND AgeCategory = 'Standard Aircraft'")
+dbGetQuery(conn, "SELECT median(ArrDelay) FROM flightdetails WHERE ArrDelay >= 15 AND AgeCategory = 'New Aircraft'")
+```
+
+# ---Q3. number of people flying between different locations over time---
+
+Calculate frequency of intrastate flights every month
+```{r}
+Q3_MonthlyFrequencyIntrastate <- dbGetQuery(conn, "SELECT strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2)) AS Month, COUNT(*) as Frequency
+                                                    FROM flightdetails
+                                                    INNER JOIN airports ON flightdetails.Dest = airports.iata
+                                                    INNER JOIN airports a ON flightdetails.Origin = a.iata
+                                                    WHERE airports.state = a.state
+                                                    GROUP BY substr(flightdetails.CurrentDate, 4, 7)
+                                                    ORDER BY strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2))")
+```
+
+Calculate frequency of interstate flights every month
+```{r}
+Q3_MonthlyFrequencyInterstate <- dbGetQuery(conn, "SELECT strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2)) AS Month, COUNT(*) as Frequency
+                                                    FROM flightdetails
+                                                    INNER JOIN airports ON flightdetails.Dest = airports.iata
+                                                    INNER JOIN airports a ON flightdetails.Origin = a.iata
+                                                    WHERE airports.state <> a.state
+                                                    GROUP BY substr(flightdetails.CurrentDate, 4, 7)
+                                                    ORDER BY strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2))")
+```
+
+Plot total frequency intra and interstate flights over Months
+```{r}
+library(cowplot)
+IndividualFrequencyPlots <- list(ggplot(Q3_MonthlyFrequencyIntrastate, aes(x = Month, y = Frequency, group = 1)) +
+                                        geom_line() +
+                                        geom_smooth(se = FALSE, color = "#005b7a") +
+                                        scale_y_continuous(labels = unit_format(unit = "", scale = 1e-3)) +
+                                        labs(x = "Time", y = "Frequency of Flights (Thousand)", title = "Frequency of Intrastate Flights over Time", subtitle = "There is an overall increase in frequency of intrastate flights") +
+                                        theme(axis.text.x = element_text(angle = 90, hjust = 1), axis.title = element_text(), text = element_text("Times New Roman")) +
+                                        geom_vline(xintercept = c("2004-12", "2005-12", "2006-12", "2007-12", "2008-12"), color = "grey") +
+                                        guides(fill = FALSE),
+                                      ggplot(Q3_MonthlyFrequencyInterstate, aes(x = Month, y = Frequency, group = 1)) +
+                                        geom_line() +
+                                        geom_smooth(se = FALSE, color = "#005b7a") +
+                                        scale_y_continuous(labels = unit_format(unit = "", scale = 1e-3)) +
+                                        labs(x = "Time", y = "Frequency of Flights (Thousand)", title = "Frequency of Interstate Flights over Time", subtitle = "There is an overall increase in frequency of interstate flights") +
+                                        theme(axis.text.x = element_text(angle = 90, hjust = 1), axis.title = element_text(), text = element_text("Times New Roman")) +
+                                        geom_vline(xintercept = c("2004-12", "2005-12", "2006-12", "2007-12", "2008-12"), color = "grey") +
+                                        guides(fill = FALSE))
+plot_grid(plotlist = IndividualFrequencyPlots, ncol = 1, nrow = 2)
+```
+
+Calculate frequency of intrastate flights every month
+```{r}
+Q3_MonthlyFrequencyOfIntrastateByState <- dbGetQuery(conn, "SELECT airports.state, strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2)) AS Month, COUNT(*) as Frequency, COUNT(*) / CAST(SUM(COUNT(*)) OVER (PARTITION BY substr(flightdetails.CurrentDate, 4, 7)) AS FLOAT) AS Percentage
+                            FROM flightdetails
+                            INNER JOIN airports ON flightdetails.Dest = airports.iata
+                            INNER JOIN airports a ON flightdetails.Origin = a.iata
+                            WHERE airports.state = a.state
+                            GROUP BY airports.state, substr(flightdetails.CurrentDate, 4, 7)
+                            ORDER BY strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2))")
+```
+
+Plot frequency of flights within states over months
+```{r}
+ggplot(Q3_MonthlyFrequencyOfIntrastateByState, aes(x = Month, y = Frequency, fill = reorder(state, Frequency), group = reorder(state, Frequency))) +
+  geom_area(outline.type = "full") +
+  labs(title = "Monthly Frequency of Intrastate Flights", subtitle = "CA and TX have the most intrastate flights throughout the years", x = "Time", y = "Frequency (Thousand)") +
+  scale_fill_manual(values = c("#da5261", "#37a029", "#de4198", "#90b824", "#e16fbc", "#e08f47", "#458bf6", "#d85f2d", "#6d7ddb", "#da6344", "#4372de", "#e5342d", "#8575db", "#54c227", "#b354c0", "#9dac45", "#8051f0", "#4e9e42", "#c186e6", "#e1651b", "#4071f3", "#db5a53", "#6865f0", "#35ba72", "#bf43ec", "#6e7f15", "#e1447e", "#52c54c", "#ea2c68", "#47c25e", "#6b71e5", "#a9681c", "#a558e6", "#f04514")) +
+  scale_y_continuous(labels = unit_format(unit = "", scale = 1e-3)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), text = element_text("Times New Roman"), plot.title = element_text(size = 15)) +
+  geom_vline(xintercept = c("2004-12", "2005-12", "2006-12", "2007-12", "2008-12"), color = "grey")
+```
+
+Calculate frequency of inbound interstate flights every month
+```{r}
+Q3_MonthlyFrequencyOfInboundByState <- dbGetQuery(conn, "SELECT airports.state, strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2)) AS Month, COUNT(*) as Frequency, COUNT(*) / CAST(SUM(COUNT(*)) OVER (PARTITION BY substr(flightdetails.CurrentDate, 4, 7)) AS FLOAT) AS Percentage
+                            FROM flightdetails
+                            INNER JOIN airports ON flightdetails.Dest = airports.iata
+                            INNER JOIN airports a ON flightdetails.Origin = a.iata
+                            WHERE airports.state <> a.state
+                            GROUP BY airports.state, substr(flightdetails.CurrentDate, 4, 7)
+                            ORDER BY strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2))")
+```
+
+Plot frequency of inbound interstate flights over months
+```{r}
+ggplot(Q3_MonthlyFrequencyOfInboundByState, aes(x = Month, y = Frequency, fill = reorder(state, Frequency), group = reorder(state, Frequency))) +
+  geom_area(outline.type = "full") +
+  labs(title = "Monthly Frequency of Inbound Interstate Flights", subtitle = "TX, CA, IL, FL and GA have the most inbound interstate flights over the years", x = "Time", y = "Frequency (Thousand)") +
+  scale_fill_manual(values = c("#985fbc", "#b6a729", "#dc7bd4", "#5e9222", "#dc79ed", "#87ba4b", "#ac54d1", "#ea971a", "#9f6edd", "#b6601e", "#7a57d5", "#d48d29", "#9b75f6", "#e13e46", "#d942d5", "#b8499b", "#e32bae", "#dd59c2", "#da5261", "#37a029", "#de4198", "#90b824", "#e16fbc", "#e08f47", "#458bf6", "#d85f2d", "#6d7ddb", "#da6344", "#4372de", "#e5342d", "#8575db", "#54c227", "#b354c0", "#9dac45", "#8051f0", "#4e9e42", "#c186e6", "#e1651b", "#4071f3", "#db5a53", "#6865f0", "#35ba72", "#bf43ec", "#6e7f15", "#e1447e", "#52c54c", "#ea2c68", "#47c25e", "#6b71e5", "#a9681c", "#a558e6", "#f04514")) +
+  scale_y_continuous(labels = unit_format(unit = "", scale = 1e-3)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), text = element_text("Times New Roman"), plot.title = element_text(size = 15), legend.position = "right") +
+  geom_vline(xintercept = c("2004-12", "2005-12", "2006-12", "2007-12", "2008-12"), color = "grey")
+```
+
+Calculate percentage of inbound interstate flights for every year
+```{r}
+Years <- c("2004", "2005", "2006", "2007", "2008")
+for (year in Years) {
+  YearlyInboundFrequency <- paste0("SELECT airports.state, Year AS Year, COUNT(*) as Frequency, COUNT(*) / CAST(SUM(COUNT(*)) OVER (PARTITION BY flightdetails.Year) AS FLOAT) AS Percentage
+                   FROM flightdetails
+                   INNER JOIN airports ON flightdetails.Dest = airports.iata
+                   INNER JOIN airports a ON flightdetails.Origin = a.iata
+                   WHERE airports.state <> a.state AND Year = '", year, "'
+                   GROUP BY airports.state, flightdetails.Year
+                   ORDER BY flightdetails.Year")
+  assign(paste0("Q3_", year, "FrequencyOfInboundState"), dbGetQuery(conn, YearlyInboundFrequency))
+}
+```
+
+Plot choropleth map of percentage of inbound interstate flights for first and last year
+```{r}
+library(usmap)
+library(dplyr)
+library(sf)
+
+state_data <- us_map(regions = "states")
+
+coords <- as.data.frame(st_coordinates(st_centroid(state_data)))
+centroid_labels <- cbind(state_data, coords)
+
+centroid_labels <- centroid_labels %>%
+  as.data.frame() %>%
+  group_by(full) %>%
+  summarize(
+    x = mean(X, na.rm = TRUE), 
+    y = mean(Y, na.rm = TRUE)
+  )
+
+for (year in names(map_data_list)) {
+  p <- plot_usmap(data = map_data_list[[year]], values = "Percentage", color = "black") +
+    scale_fill_continuous(name = "Percentage", low = "#fcfcfc", high = "#003f5c", 
+                          limits = c(0.0005, 0.092), label = scales::percent) +
+    ggtitle(paste("Percentage of Inbound Flight Frequency per State for", year)) +
+    theme_minimal() +
+    ggrepel::geom_label_repel(data = centroid_labels, 
+                              aes(x = x, y = y, label = full), 
+                              inherit.aes = FALSE, 
+                              size = 3,
+                              max.overlaps = 20)
+  print(p)
+}
+```
+
+Calculate frequency of outbound interstate flights every month
+```{r}
+Q3_MonthlyFrequencyOfOutboundByState <- dbGetQuery(conn, "SELECT a.state, strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2)) AS Month, COUNT(*) as Frequency, COUNT(*) / CAST(SUM(COUNT(*)) OVER (PARTITION BY substr(flightdetails.CurrentDate, 4, 7)) AS FLOAT) AS Percentage
+                            FROM flightdetails
+                            INNER JOIN airports ON flightdetails.Dest = airports.iata
+                            INNER JOIN airports a ON flightdetails.Origin = a.iata
+                            WHERE airports.state <> a.state
+                            GROUP BY a.state, substr(flightdetails.CurrentDate, 4, 7)
+                            ORDER BY strftime('%Y-%m', substr(flightdetails.CurrentDate, 7, 4) || '-' || substr(flightdetails.CurrentDate, 4, 2) || '-' || substr(flightdetails.CurrentDate, 1, 2))")
+```
+
+Plot frequency of outbound flights over months
+```{r}
+ggplot(Q3_MonthlyFrequencyOfOutboundByState, aes(x = Month, y = Frequency, fill = reorder(state, Frequency), group = reorder(state, Frequency))) +
+  geom_area(outline.type = "full") +
+  labs(title = "Monthly Frequency of Outbound Interstate Flights", subtitle = "TX, CA, IL, FL and GA have the most inbound interstate flights over the years", x = "Time", y = "Frequency (Thousand)") +
+  scale_fill_manual(values = c("#985fbc", "#b6a729", "#dc7bd4", "#5e9222", "#dc79ed", "#87ba4b", "#ac54d1", "#ea971a", "#9f6edd", "#b6601e", "#7a57d5", "#d48d29", "#9b75f6", "#e13e46", "#d942d5", "#b8499b", "#e32bae", "#dd59c2", "#da5261", "#37a029", "#de4198", "#90b824", "#e16fbc", "#e08f47", "#458bf6", "#d85f2d", "#6d7ddb", "#da6344", "#4372de", "#e5342d", "#8575db", "#54c227", "#b354c0", "#9dac45", "#8051f0", "#4e9e42", "#c186e6", "#e1651b", "#4071f3", "#db5a53", "#6865f0", "#35ba72", "#bf43ec", "#6e7f15", "#e1447e", "#52c54c", "#ea2c68", "#47c25e", "#6b71e5", "#a9681c", "#a558e6", "#f04514")) +
+  scale_y_continuous(labels = unit_format(unit = "", scale = 1e-3)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), text = element_text("Times New Roman"), plot.title = element_text(size = 15)) +
+  geom_vline(xintercept = c("2004-12", "2005-12", "2006-12", "2007-12", "2008-12"), color = "grey")
+```
+
+Calculate percentage of outbound interstate flights for every year
+```{r}
+Years <- c("2004", "2005", "2006", "2007", "2008")
+for (year in Years) {
+  YearlyOutboundFrequency <- paste0("SELECT a.state, Year AS Year, COUNT(*) as Frequency, COUNT(*) / CAST(SUM(COUNT(*)) OVER (PARTITION BY flightdetails.Year) AS FLOAT) AS Percentage
+                   FROM flightdetails
+                   INNER JOIN airports ON flightdetails.Dest = airports.iata
+                   INNER JOIN airports a ON flightdetails.Origin = a.iata
+                   WHERE airports.state <> a.state AND Year = '", year, "'
+                   GROUP BY a.state, flightdetails.Year
+                   ORDER BY flightdetails.Year")
+  assign(paste0("Q3_", year, "FrequencyOfOutboundState"), dbGetQuery(conn, YearlyOutboundFrequency))
+}
+```
+
+Plot choropleth map of percentage of inbound interstate flights for first and last year
+```{r}
+library(usmap)
+library(sf)
+library(dplyr)
+
+state_map <- us_map(regions = "states")
+
+centroids <- st_centroid(state_map)
+coords <- st_coordinates(centroids)
+
+centroid_labels <- data.frame(
+  full = state_map$full,
+  x = coords[, 1],
+  y = coords[, 2]
+) %>%
+  distinct(full, .keep_all = TRUE)
+
+for (year in names(map_data_list)) {
+  p <- plot_usmap(data = map_data_list[[year]], values = "Percentage", color = "black") +
+    scale_fill_continuous(name = "Percentage", low = "#fcfcfc", high = "#003f5c", 
+                          limits = c(0.0005, 0.092), label = scales::percent) +
+    ggtitle(paste("Percentage of Outbound Flight Frequency per State for", year)) +
+    theme_minimal() +
+    ggrepel::geom_label_repel(data = centroid_labels, 
+                              aes(x = x, y = y, label = full), 
+                              inherit.aes = FALSE, 
+                              size = 3,
+                              max.overlaps = 20)
+  print(p)
+}
+```
+
+# ---Q4. detecting cascading delays (arr delay in B -> dep delay in B -> arr delay in C)---
+
+Calculating cascading delays based on delays caused by the same plane
+```{r}
+Q4_FrequencyOfCascadingDelays <- dbGetQuery(conn, "SELECT COUNT(*) AS TotalCascadingDelays
+                                                    FROM flightdetails AS f1
+                                                    JOIN flightdetails AS f2 ON f1.TailNum = f2.TailNum
+                                                      AND f1.CurrentDate = f2.CurrentDate
+                                                      AND f1.Dest = f2.Origin
+                                                      AND f1.CRSArrTime < f2.CRSDepTime
+                                                      AND f1.ArrDelay > 0
+                                                      AND f2.DepDelay > 0
+                                                      AND f2.ArrDelay > 0
+                                                      AND f2.LateAirCraftDelay > 0")
+
+head(Q4_FrequencyOfCascadingDelays)
+```
+
+Returning entries of cascading delays
+```{r}
+Q4_EntriesOfCascadingDelays <- dbGetQuery(conn, "SELECT f1.TailNum AS TailNum1, f1.TailNum AS TailNum2, 
+                                                      f1.CurrentDate AS Date1, f2.CurrentDate AS Date2,
+                                                      f1.Origin AS Origin1, f1.Dest AS Dest1,
+                                                      f2.Origin AS Origin2, f2.Dest AS Dest2,
+                                                      f1.CRSArrTime AS S_ArrTime1, f1.ArrTime AS A_ArrTime1, 
+                                                      f2.CRSDepTime AS S_DepTime1, f2.DepTime AS A_DepTime1, 
+                                                      f2.CRSArrTime AS S_ArrTime2, f2.ArrTime AS A_ArrTime2,
+                                                      f1.ArrDelay AS ArrDelay1, f2.DepDelay AS DepDelay1, f2.ArrDelay AS ArrDelay2,
+                                                      f2.CarrierDelay AS C_Delay2, f2.NASDelay AS NAS_Delay2, f2.LateAircraftDelay AS LA_Delay2,
+                                                      f2.WeatherDelay AS W_Delay, f2.SecurityDelay AS D_Delay
+                                                    FROM flightdetails AS f1
+                                                    JOIN flightdetails AS f2 ON f1.TailNum = f2.TailNum
+                                                      AND f1.CurrentDate = f2.CurrentDate
+                                                      AND f1.Dest = f2.Origin
+                                                      AND f1.CRSArrTime < f2.CRSDepTime
+                                                      AND f1.ArrDelay > 0
+                                                      AND f2.DepDelay > 0
+                                                      AND f2.ArrDelay > 0
+                                                      AND f2.LateAircraftDelay > 0
+                                                    ORDER BY strftime('%Y-%m', substr(f1.CurrentDate, 7, 4) || '-' || substr(f1.CurrentDate, 4, 2) || '-' || substr(f1.CurrentDate, 1, 2))")
+
+head(Q4_EntriesOfCascadingDelays)
+```
+
+# ---Q5. building machine learning model to detect delays---
+
+Creating sample dataframe for machine learning model
+```{r}
+LearningSample <- dbGetQuery(conn, "SELECT Year, Month, DayofMonth, DayofWeek, DepTime, CRSDepTime, AirTime, Distance, DepDelay, TaxiIn, TaxiOut, 
+                             CASE WHEN ArrDelay < 15 THEN 0 ELSE 1 END AS Delayed
+                             FROM flightdetails 
+                             ORDER BY RANDOM() LIMIT 100000")
+```
+
+Converting to factors
+```{r}
+LearningSample$Delayed <- factor(LearningSample$Delayed)
+LearningSample$Year <- factor(LearningSample$Year)
+LearningSample$Month <- factor(LearningSample$Month)
+LearningSample$DayofMonth <- factor(LearningSample$DayofMonth)
+LearningSample$DayOfWeek <- factor(LearningSample$DayOfWeek)
+```
+
+Setting up task to predict ArrDelay
+```{r}
+task <- TaskClassif$new("LearningSample", backend = LearningSample, target = "Delayed")
+measure <- msr("classif.ce")
+task
+```
+
+Setting up conversion as some of the variables are factors for which some methods do not support factor types
+```{r}
+fencoder <- po("encode", method = "treatment",
+            affect_columns = selector_type("factor"))
+ord_to_int <- po("colapply", applicator = as.integer,
+              affect_columns = selector_type("ordered"))
+```
+
+Setting up training and test sets
+```{r}
+train_set <- sample(task$nrow, 0.8 * task$nrow)
+test_set <- setdiff(seq_len(task$nrow), train_set)
+```
+
+Setting up tuner
+```{r}
+LearningSample$Delayed <- as.factor(LearningSample$Delayed)
+
+task <- TaskClassif$new(id = "FlightTask", 
+                        backend = LearningSample, 
+                        target = "Delayed")
+
+task$feature_types
+```
+
+```{r}
+rm(tuner, terminator, at_plr)
+
+tuner <- mlr3tuning::tnr("grid_search", resolution = 10)
+terminator <- mlr3tuning::trm("evals", n_evals = 20)
+```
+
+# ---Q5. Logistic Regression---
+
+Create logistic regression learner
+```{r}
+learner_lr <- lrn("classif.log_reg", predict_type = "prob")
+gc_lr <- po('imputemean') %>>%
+          po(learner_lr)
+glrn_lr <- GraphLearner$new(gc_lr)
+set.seed(100)
+```
+
+Using logistic regression model to train and test the learner
+```{r}
+glrn_lr$train(task, row_ids = train_set)
+glrn_lr$predict(task, row_ids = test_set)$score()
+```
+
+# ---Q5. Gradient Boosting---
+
+Create gradient boosting learner
+```{r}
+learner_gb <- lrn("classif.xgboost", predict_type = "prob")
+gc_gb <- po('imputemean') %>>%
+         fencoder %>>% ord_to_int %>>%
+         po(learner_gb)
+glrn_gb <- GraphLearner$new(gc_gb)
+```
+
+Using gradient boosting model to train and test the learner
+```{r}
+glrn_gb$train(task, row_ids = train_set)
+glrn_gb$predict(task, row_ids = test_set)$score() 
+```
+
+# ---Q5. Penalised logistic regression---
+
+Create Penalised logistic regression learner
+```{r}
+learner_plr <- lrn('classif.glmnet', predict_type = "prob") 
+gc_plr <- po('scale') %>>% 
+          fencoder %>>% ord_to_int %>>%
+          po('imputemean') %>>%
+          po(learner_plr)
+glrn_plr <- GraphLearner$new(gc_plr)
+```
+
+Tune hyper parameters
+```{r}
+library(paradox)
+
+tune_lambda <- ps(
+  classif.glmnet.lambda = p_dbl(lower = 0.001, upper = 2)
+)
+
+print(tune_lambda)
+```
+
+Using penalised logistic regression model to train and test the learner
+```{r}
+at_plr <- AutoTuner$new(learner = glrn_plr,
+                        resampling = rsmp('cv', folds = 10),
+                        measure = measure,
+                        search_space = tune_lambda,
+                        terminator = terminator,
+                        tuner = tuner)
+at_plr$train(task, row_ids = train_set)
+```
+
+# ---Q5. Classification trees---
+
+Create classification trees learner
+```{r}
+learner_tree <- lrn("classif.rpart", predict_type = "prob")
+
+gc_tree <- po('imputemean') %>>%
+           po(learner_tree)
+glrn_tree <- GraphLearner$new(gc_tree)
+```
+
+Using Classification trees model to train and test the learner
+```{r}
+glrn_tree$train(task, row_ids = train_set)
+glrn_tree$predict(task, row_ids = test_set)$score() 
+```
+
+# ---Q5. Random Forest---
+
+Create random forest learner
+```{r}
+learner_rf <- lrn('classif.ranger', predict_type = "prob") 
+learner_rf$param_set$values <- list(min.node.size = 4)
+gc_rf <- po('scale') %>>%
+         po('imputemean') %>>%
+         po(learner_rf)
+glrn_rf <- GraphLearner$new(gc_rf)
+```
+
+Tune hyper parameters
+```{r}
+library(paradox)
+
+tune_ntrees <- ps(
+  classif.ranger.num.trees = p_int(lower = 50, upper = 600)
+)
+
+print(tune_ntrees)
+```
+
+Create and use tuned random forest learner to train and test the learner without artificial value for lambda
+```{r}
+library(future)
+
+plan("multisession")
+at_rf <- AutoTuner$new(
+          learner = glrn_rf,
+          resampling = rsmp('cv', folds = 10),
+          measure = measure,
+          search_space = tune_ntrees,
+          terminator = terminator,
+          tuner = tuner
+)
+
+at_rf$train(task, row_ids = train_set)
+at_rf$predict(task, row_ids = test_set)$score() 
+```
+
+# ---Q5. Support vector machines---
+
+Create Support vector machines learner
+```{r}
+learner_svm <- lrn("classif.svm", predict_type = "prob")
+gc_svm <- po('imputemean') %>>% 
+          fencoder %>>% ord_to_int %>>%
+          po(learner_svm)
+glrn_svm <- GraphLearner$new(gc_svm)
+```
+
+Using Support vector machines to train and test the learner
+```{r}
+library(future)
+
+plan("multisession")
+small_train = sample(train_set, 10000)
+glrn_svm$train(task, row_ids = small_train)
+glrn_svm$predict(task, row_ids = test_set)$score()
+```
+
+# ---Q5. Comparing MSE of Machine Learning Method---
+
+Compare the mean squared errors of each machine learning method to determine which to use
+```{r}
+set.seed(1)
+lrn_list <- list(
+            glrn_lr,
+            glrn_gb,
+            at_plr,
+            glrn_tree,
+            at_rf,
+            glrn_svm)
+```
+
+Set the benchmark design and run the comparisons
+```{r}
+library(future)
+
+lgr::get_logger("mlr3")$set_threshold("warn")
+lgr::get_logger("bbotk")$set_threshold("warn")
+
+plan("multisession")
+
+set.seed(123)
+task$filter(sample(seq_len(task$nrow), 50000))
+
+bm_design <- benchmark_grid(
+  task = task, 
+  resamplings = rsmp("cv", folds = 3), 
+  learners = lrn_list
+)
+
+bmr <- benchmark(bm_design, store_models = FALSE) 
+
+measures <- list(msr("classif.auc"), msr("classif.ce"))
+bmr_agr <- bmr$aggregate(measures)
+
+bmr_agr$acc <- 1 - bmr_agr$classif.ce
+
+print(bmr_agr[, .(learner_id, classif.auc, acc)])
+```
+
+Plot comparisons of machine learning models
+```{r}
+autoplot(bmr) + 
+  labs(title = "Mean Squared Error (MSE) of Machine Learning Models", subtitle = "Random Forest Model has the lowest MSE", x = "Machine Learning Models", y = "Mean Squared Error (MSE)") +
+  scale_x_discrete(labels = c("Logistic Regression", "Gradient Boosting", "Penalised Logistic Regression", "Classification Trees", "Random Forest", "Support Vector Machines")) +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),axis.title = element_text(), text = element_text("Times New Roman")) +
+  stat_summary(fun=median, geom="text", aes(label = paste0("MSE: ", round(..y.., 3))), position = position_stack(vjust = 1.05), size=4, show.legend = FALSE, family = "Times New Roman")
+
+autoplot(bmr, type = "roc") + 
+  labs(title = "Receiver Operating Characteristics (ROC) curve", 
+       subtitle = "Random Forest Model has the highest Area Under Curve (AUC)", 
+       x = "False Positive Rate (Specificity)", y = "True Positive Rate (Sensitivity)") +
+  theme_minimal(base_size = 13) +
+  theme(axis.title = element_text(), text = element_text("Times New Roman")) +
+  annotate("text", x = 0.7, y = 0.7, label = "Logistic Regression AUC = 0.930", size = 3, color = "black", family = "Times New Roman") +
+  annotate("text", x = 0.71, y = 0.6, label = "Gradient Boosting AUC = 0.928", size = 3, color = "black", family = "Times New Roman") +
+  annotate("text", x = 0.6, y = 0.5, label = "Penalised Logistic Regression AUC = 0.930", size = 3, color = "black", family = "Times New Roman") +
+  annotate("text", x = 0.75, y = 0.4, label = "Classification Trees = 0.922", size = 3, color = "black", family = "Times New Roman") +
+  annotate("text", x = 0.725, y = 0.3, label = "Random Forest AUC = 0.933", size = 3, color = "black", fontface = "bold", family = "Times New Roman") +
+  annotate("text", x = 0.635, y = 0.2, label = "Support Vector Machines AUC = 0.931", size = 3, color = "black", family = "Times New Roman")
+```
+
+

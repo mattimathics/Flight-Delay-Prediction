@@ -1,0 +1,21 @@
+# Data (too large for git)
+data/*
+!data/README.md
+*.db
+*.csv.bz2
+
+# Python
+__pycache__/
+.ipynb_checkpoints/
+.venv/
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+*_cache/
+*_files/
+
+# OS
+.DS_Store
+Thumbs.db
