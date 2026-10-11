@@ -18,14 +18,14 @@ Flight delays cost airlines money and passengers time. Using the [ASA Data Expo 
 
 | Question | Finding |
 |---|---|
-| Time of day | Morning departures have the lowest delay rate (14.8%); delay risk climbs through the day* |
+| Time of day | Morning departures are the most reliable (15.5% delayed by scheduled time); risk peaks in the evening (30.6%)* |
 | Day and season | Friday is the riskiest day (27.3%) and winter the riskiest season (28.3%); autumn is the most reliable (19.2%) |
 | Aircraft age | Planes over 20 years old are delayed slightly more often than planes under 10 (27.0% vs 24.2%) |
 | Flight volume | Flight numbers began falling nationwide in December 2007 |
 | Cascading delays | Matching aircraft tail numbers traced how a late arrival at one airport delays the same plane's next departure |
 | Prediction | See [Modelling](#modelling-and-a-lesson-in-target-leakage) below |
 
-\*Measured by actual departure time. A delayed evening flight can slide into the "night" bucket, which inflates the night rate. `src/model_v2.py` recomputes it by scheduled time.
+\*The coursework grouped flights by *actual* departure time, which made night look worst (40.9%). That is an artefact: a delayed evening flight slides into the "night" bucket. Grouped by *scheduled* time (v2), night drops to 26.5% and evening is the real peak. The chart above shows the original actual-time grouping.
 
 ## Modelling, and a lesson in target leakage
 
@@ -37,11 +37,22 @@ Flight delays cost airlines money and passengers time. Using the [ASA Data Expo 
 
 **v2: pre-departure features only** (`src/model_v2.py`). This version rebuilds the model with only what is known at booking time: scheduled times, route, carrier, distance, month, weekday and aircraft age. It trains on 2004–2007 and tests on 2008, mimicking real forecasting, and reports the leaky model next to it so the gap is visible.
 
-| Model | Features | Test AUC (2008) |
+| Model | Features | Test AUC (Jan–Apr 2008) |
 |---|---|---|
-| Logistic regression | Pre-departure | [run v2] |
-| Gradient boosting | Pre-departure | [run v2] |
-| Gradient boosting | + departure delay, taxi, air time (leaky) | [run v2] |
+| Logistic regression | Pre-departure | 0.627 |
+| Gradient boosting | Pre-departure | **0.641** |
+| Gradient boosting | + departure delay, taxi, air time (leaky) | 0.997 |
+
+Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 23,131 flights from 2008. The 2008 file only covers January to April. Because the sample is random, AUCs move by about ±0.01 between runs.
+
+**What this means.** Predicting a delay from the schedule alone is genuinely hard: an AUC of about 0.64 is a modest but real signal. Adding just the departure delay jumps it to 0.997. That gap is the leakage, and it is why the coursework scores were too good to be true.
+
+| Time of day | Delay rate, by actual departure | Delay rate, by scheduled departure |
+|---|---|---|
+| Morning | 13.9% | 15.5% |
+| Afternoon | 23.1% | 24.4% |
+| Evening | 30.9% | **30.6%** |
+| Night | 40.9% | 26.5% |
 
 ## Tech stack
 

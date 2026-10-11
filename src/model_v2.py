@@ -83,7 +83,7 @@ def logistic(num, cat):
 def boosting(num, cat):
     prep = ColumnTransformer([
         ("num", "passthrough", num),
-        ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1,
+        ("cat", OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1, max_categories=255,
                                encoded_missing_value=-1), cat),
     ])
     cat_mask = [False] * len(num) + [True] * len(cat)
@@ -95,7 +95,7 @@ def boosting(num, cat):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(ROOT / "data" / "Fly.db"))
-    ap.add_argument("--pct", type=int, default=1, help="percent of flights to sample (default 1)")
+    ap.add_argument("--pct", type=int, default=1, help="percent of flights to sample (default 1; sample is random, so results vary slightly between runs)")
     args = ap.parse_args()
 
     df = load(args.db, args.pct)
@@ -139,6 +139,7 @@ def main():
     for name, (model, cols) in fitted.items():
         RocCurveDisplay.from_estimator(model, test[cols], test["Delayed"], ax=ax, name=name)
     ax.plot([0, 1], [0, 1], "k--", lw=1)
+    ax.legend(loc="lower right", fontsize=8)
     ax.set_title("Pre-departure features vs leaky features (test set: 2008)")
     fig.tight_layout()
     fig.savefig(ROOT / "images" / "roc_curve_v2.png", dpi=150)
