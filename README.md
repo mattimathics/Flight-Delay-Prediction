@@ -45,6 +45,8 @@ Flight delays cost airlines money and passengers time. Using the [ASA Data Expo 
 
 Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 23,131 flights from 2008. The 2008 file only covers January to April. Because the sample is random, AUCs move by about ±0.01 between runs.
 
+![ROC curves, v2: pre-departure vs leaky features](images/roc_curve_v2.png)
+
 **What this means.** Predicting a delay from the schedule alone is genuinely hard: an AUC of about 0.64 is a modest but real signal. Adding just the departure delay jumps it to 0.997. That gap is the leakage, and it is why the coursework scores were too good to be true.
 
 | Time of day | Delay rate, by actual departure | Delay rate, by scheduled departure |
