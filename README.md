@@ -43,7 +43,7 @@ Flight delays cost airlines money and passengers time. Using the [ASA Data Expo 
 | Gradient boosting | Pre-departure | **0.641** |
 | Gradient boosting | + departure delay, taxi, air time (leaky) | 0.997 |
 
-Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 23,131 flights from 2008. The 2008 file only covers January to April. Because the sample is random, AUCs move by about ±0.01 between runs.
+Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 23,131 flights from 2008. The 2008 file only covers January to April.
 
 ![ROC curves, v2: pre-departure vs leaky features](images/roc_curve_v2.png)
 
@@ -64,7 +64,7 @@ Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 2
 
 ## Design decisions
 
-- **SQLite instead of in-memory data frames.** Five years of flights don't fit comfortably in laptop memory. Loading the CSVs into an indexed SQLite database cut query times from minutes to seconds, and let each model pull just the sample it needed.
+- **SQLite instead of in-memory data frames.** Five years of flights (31 million rows) don't fit comfortably in laptop memory. Loading the CSVs into an indexed SQLite database let each query and each model pull just the rows it needed.
 - **Delay *rates*, not counts.** Busy time slots naturally have more delays, so every comparison uses the share of flights delayed.
 - **FAA definition of a delay:** arrival 15+ minutes after schedule.
 - **Time-based test split in v2.** A random split lets the model peek at the future; training on earlier years and testing on 2008 does not.
@@ -94,7 +94,7 @@ Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 2
 ## What I learned
 
 - **Check what a feature knows, and when.** An AUC near 1 on a noisy real-world problem is a warning sign, not a win.
-- **Indexing matters at scale.** The same SQL went from minutes to seconds once the right columns were indexed.
+- **Plan indexes around the queries.** The cascading-delay analysis joins 31 million rows to themselves on tail number and date, so those are the columns I indexed.
 - **How you bucket a variable can bias a result**, as with actual vs scheduled departure time.
 - **Doing the same analysis in R and Python** showed me where mlr3 and scikit-learn differ in pipelines, tuning and resampling.
 

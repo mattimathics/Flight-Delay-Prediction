@@ -93,6 +93,8 @@ for(i in 2004:2008) {
 # ---Determining lower limit of a delay---
 
 Determining relationships in Arrivals and Departure Delays 
+
+Note: the five cause columns (carrier, weather, NAS, security, late aircraft) are the airline's own breakdown of each delay, so they add up to it by definition and are only filled in for delayed flights. The near-perfect R-squared below is a sanity check that the columns are consistent, not evidence about what causes delays.
 ```{r}
 flight_subset <- dbGetQuery(conn, "
   SELECT ArrDelay, DepDelay, CarrierDelay, WeatherDelay, 
@@ -274,7 +276,7 @@ ggplot(Q1_TimeOfYear, aes(x = factor(Time_of_Year, levels = c("Spring", "Summer"
   scale_fill_manual(values = c("Summer" = "#00798c", "Autumn" = "#003f5c", "Winter" = "#00798c", "Spring" = "#00798c")) +
   labs(title = "Percentage of Flights Delayed by Time of Year", 
        subtitle = "Flights in Autumn have the lowest percentage of flights delayed",
-       x = "Day of Week", y = "Percentage") +
+       x = "Time of Year", y = "Percentage") +
   theme_minimal(base_size = 13) +
   theme(axis.title = element_text(), text = element_text("Times New Roman")) +
   geom_text(vjust = -0.5, size = 4, family = "Times New Roman") +
@@ -638,7 +640,13 @@ Q4_EntriesOfCascadingDelays <- dbGetQuery(conn, "SELECT f1.TailNum AS TailNum1, 
 head(Q4_EntriesOfCascadingDelays)
 ```
 
-# ---Q5. building machine learning model to detect delays---
+# ---Q5. Coursework model (contains target leakage)---
+
+**Read this first.** The models in this section use DepTime, DepDelay, AirTime, TaxiIn and TaxiOut. These are only known after the plane has left (or landed), and departure delay almost decides whether the arrival is 15+ minutes late. That is target leakage, and it is why every model here scores an AUC of about 0.93. The scores do not show how well a delay can be predicted in advance.
+
+The leakage-free version is `src/model_v2.py`: pre-departure features only, trained on 2004-2007 and tested on 2008. See the "Modelling" section of the repo README for its results. This section is kept unchanged as the original coursework.
+
+Building machine learning model to detect delays
 
 Creating sample dataframe for machine learning model
 ```{r}
@@ -843,9 +851,9 @@ glrn_svm$train(task, row_ids = small_train)
 glrn_svm$predict(task, row_ids = test_set)$score()
 ```
 
-# ---Q5. Comparing MSE of Machine Learning Method---
+# ---Q5. Comparing classification error of the coursework models---
 
-Compare the mean squared errors of each machine learning method to determine which to use
+Compare the classification error of each machine learning method to determine which to use
 ```{r}
 set.seed(1)
 lrn_list <- list(
@@ -888,16 +896,16 @@ print(bmr_agr[, .(learner_id, classif.auc, acc)])
 Plot comparisons of machine learning models
 ```{r}
 autoplot(bmr) + 
-  labs(title = "Mean Squared Error (MSE) of Machine Learning Models", subtitle = "Random Forest Model has the lowest MSE", x = "Machine Learning Models", y = "Mean Squared Error (MSE)") +
+  labs(title = "Classification Error of Coursework Models (leaky features)", subtitle = "Random Forest has the lowest classification error", x = "Machine Learning Models", y = "Classification error") +
   scale_x_discrete(labels = c("Logistic Regression", "Gradient Boosting", "Penalised Logistic Regression", "Classification Trees", "Random Forest", "Support Vector Machines")) +
   theme_minimal(base_size = 13) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),axis.title = element_text(), text = element_text("Times New Roman")) +
-  stat_summary(fun=median, geom="text", aes(label = paste0("MSE: ", round(..y.., 3))), position = position_stack(vjust = 1.05), size=4, show.legend = FALSE, family = "Times New Roman")
+  stat_summary(fun=median, geom="text", aes(label = paste0("Error: ", round(..y.., 3))), position = position_stack(vjust = 1.05), size=4, show.legend = FALSE, family = "Times New Roman")
 
 autoplot(bmr, type = "roc") + 
-  labs(title = "Receiver Operating Characteristics (ROC) curve", 
-       subtitle = "Random Forest Model has the highest Area Under Curve (AUC)", 
-       x = "False Positive Rate (Specificity)", y = "True Positive Rate (Sensitivity)") +
+  labs(title = "Coursework model (leaky features): ROC curve", 
+       subtitle = "Inflated by target leakage; see src/model_v2.py for the honest version", 
+       x = "False Positive Rate (1 - Specificity)", y = "True Positive Rate (Sensitivity)") +
   theme_minimal(base_size = 13) +
   theme(axis.title = element_text(), text = element_text("Times New Roman")) +
   annotate("text", x = 0.7, y = 0.7, label = "Logistic Regression AUC = 0.930", size = 3, color = "black", family = "Times New Roman") +
