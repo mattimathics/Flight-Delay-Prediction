@@ -100,3 +100,17 @@ def test_different_seed_gives_different_sample(db):
 def test_sample_size_is_close_to_pct():
     kept = sum(model_v2.in_sample(rowid, pct=10, seed=42) for rowid in range(1, 100_001))
     assert 9_500 < kept < 10_500
+
+
+def test_fit_and_score_returns_one_auc_per_setup(db):
+    import matplotlib
+    matplotlib.use("Agg")
+    train, test = model_v2.split_by_year(model_v2.load(db, pct=100))
+    assert train["Year"].max() <= 2007
+    assert set(test["Year"]) == {2008}
+    results, fitted = model_v2.fit_and_score(train, test)
+    assert list(results["model"]) == list(model_v2.SETUPS)
+    assert results["test_auc"].between(0, 1).all()
+    assert (results["n_test"] == len(test)).all()
+    ax = model_v2.plot_roc(fitted, test)
+    assert len(ax.get_lines()) == len(model_v2.SETUPS) + 1  # one curve per model + diagonal

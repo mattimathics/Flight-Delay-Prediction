@@ -113,6 +113,55 @@ def boosting(num, cat):
     return Pipeline([("prep", prep), ("model", model)])
 
 
+SETUPS = {
+    "Logistic regression (pre-departure)": (logistic, PRE_DEPARTURE_NUM, PRE_DEPARTURE_CAT),
+    "Gradient boosting (pre-departure)": (boosting, PRE_DEPARTURE_NUM, PRE_DEPARTURE_CAT),
+    "Gradient boosting (leaky: + DepDelay, taxi, air time)": (boosting, PRE_DEPARTURE_NUM + LEAKY_NUM, PRE_DEPARTURE_CAT),
+}
+
+
+def delay_rate_by_time_of_day(df):
+    # Grouping by actual DepTime pushes late-running evening flights into "Night",
+    # inflating its delay rate; grouping by scheduled CRSDepTime does not.
+    return pd.DataFrame({
+        "by_actual_departure": df.groupby(time_of_day(df["DepTime"]))["Delayed"].mean(),
+        "by_scheduled_departure": df.groupby(time_of_day(df["CRSDepTime"]))["Delayed"].mean(),
+    }).reindex(["Morning", "Afternoon", "Evening", "Night"])
+
+
+def split_by_year(df):
+    """Train on 2004-2007, test on 2008, as a real forecast would."""
+    train = df[df["Year"] <= 2007]
+    test = df[df["Year"] == 2008]
+    if test.empty:  # fallback if 2008 is missing from the database
+        test = df.sample(frac=0.2, random_state=1)
+        train = df.drop(test.index)
+    return train, test
+
+
+def fit_and_score(train, test):
+    """Fit every setup in SETUPS; return the AUC table and the fitted models."""
+    results, fitted = [], {}
+    for name, (build, num, cat) in SETUPS.items():
+        model = build(num, cat).fit(train[num + cat], train["Delayed"])
+        auc = roc_auc_score(test["Delayed"], model.predict_proba(test[num + cat])[:, 1])
+        results.append({"model": name, "test_auc": round(auc, 3), "n_train": len(train), "n_test": len(test)})
+        fitted[name] = (model, num + cat)
+    return pd.DataFrame(results), fitted
+
+
+def plot_roc(fitted, test, ax=None):
+    if ax is None:
+        _, ax = plt.subplots(figsize=(7, 6))
+    for name, (model, cols) in fitted.items():
+        RocCurveDisplay.from_estimator(model, test[cols], test["Delayed"], ax=ax, name=name)
+    ax.plot([0, 1], [0, 1], "k--", lw=1)
+    ax.legend(loc="lower right", fontsize=8)
+    ax.set_title("Pre-departure features vs leaky features (test set: 2008)")
+    ax.figure.tight_layout()
+    return ax
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(ROOT / "data" / "Fly.db"))
@@ -124,49 +173,24 @@ def main():
     print(f"Sampled {len(df):,} flights (pct={args.pct}, seed={args.seed}); "
           f"{df['Delayed'].mean():.1%} arrived 15+ min late")
 
-    # Delay rate by actual vs scheduled departure time. Grouping by actual DepTime
-    # pushes late-running evening flights into "Night", inflating its delay rate.
-    rates = pd.DataFrame({
-        "by_actual_departure": df.groupby(time_of_day(df["DepTime"]))["Delayed"].mean(),
-        "by_scheduled_departure": df.groupby(time_of_day(df["CRSDepTime"]))["Delayed"].mean(),
-    }).reindex(["Morning", "Afternoon", "Evening", "Night"])
+    rates = delay_rate_by_time_of_day(df)
     print("\nDelay rate by time of day\n", rates.round(3))
 
-    train = df[df["Year"] <= 2007]
-    test = df[df["Year"] == 2008]
-    if test.empty:  # fallback if 2008 is missing from the database
-        test = df.sample(frac=0.2, random_state=1)
-        train = df.drop(test.index)
+    train, test = split_by_year(df)
     print(f"\nTrain {len(train):,} rows | Test {len(test):,} rows")
 
-    setups = {
-        "Logistic regression (pre-departure)": (logistic, PRE_DEPARTURE_NUM, PRE_DEPARTURE_CAT),
-        "Gradient boosting (pre-departure)": (boosting, PRE_DEPARTURE_NUM, PRE_DEPARTURE_CAT),
-        "Gradient boosting (leaky: + DepDelay, taxi, air time)": (boosting, PRE_DEPARTURE_NUM + LEAKY_NUM, PRE_DEPARTURE_CAT),
-    }
-
-    results, fitted = [], {}
-    for name, (build, num, cat) in setups.items():
-        model = build(num, cat).fit(train[num + cat], train["Delayed"])
-        auc = roc_auc_score(test["Delayed"], model.predict_proba(test[num + cat])[:, 1])
-        results.append({"model": name, "test_auc": round(auc, 3), "n_train": len(train), "n_test": len(test),
-                        "pct": args.pct, "seed": args.seed})
-        fitted[name] = (model, num + cat)
-        print(f"{name}: AUC {auc:.3f}")
+    results, fitted = fit_and_score(train, test)
+    results["pct"], results["seed"] = args.pct, args.seed
+    for row in results.itertuples():
+        print(f"{row.model}: AUC {row.test_auc:.3f}")
 
     out = ROOT / "results"
     out.mkdir(exist_ok=True)
-    pd.DataFrame(results).to_csv(out / "model_comparison_v2.csv", index=False)
+    results.to_csv(out / "model_comparison_v2.csv", index=False)
     rates.to_csv(out / "delay_rate_by_time_of_day_v2.csv")
 
-    fig, ax = plt.subplots(figsize=(7, 6))
-    for name, (model, cols) in fitted.items():
-        RocCurveDisplay.from_estimator(model, test[cols], test["Delayed"], ax=ax, name=name)
-    ax.plot([0, 1], [0, 1], "k--", lw=1)
-    ax.legend(loc="lower right", fontsize=8)
-    ax.set_title("Pre-departure features vs leaky features (test set: 2008)")
-    fig.tight_layout()
-    fig.savefig(ROOT / "images" / "roc_curve_v2.png", dpi=150)
+    ax = plot_roc(fitted, test)
+    ax.figure.savefig(ROOT / "images" / "roc_curve_v2.png", dpi=150)
     print(f"\nSaved results to {out} and images/roc_curve_v2.png")
 
 
