@@ -1,5 +1,7 @@
 # ✈️ Flight Delay Analysis and Prediction
 
+[![tests](https://github.com/mattimathics/Flight-Delay-Prediction/actions/workflows/tests.yml/badge.svg)](https://github.com/mattimathics/Flight-Delay-Prediction/actions/workflows/tests.yml)
+
 **What makes US flights late, and can we predict a delay before the plane leaves?** An end-to-end analysis of US domestic flights from 2004 to 2008, from building a SQL database to comparing machine learning models, in both **R** and **Python**.
 
 ![Delay rate by time of day](images/delay_rate_by_time_of_day.png)
@@ -68,6 +70,7 @@ Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 2
 - **Delay *rates*, not counts.** Busy time slots naturally have more delays, so every comparison uses the share of flights delayed.
 - **FAA definition of a delay:** arrival 15+ minutes after schedule.
 - **Time-based test split in v2.** A random split lets the model peek at the future; training on earlier years and testing on 2008 does not.
+- **Repeatable sampling.** SQLite's `RANDOM()` can't be seeded, so v2 keeps a flight when a fixed hash of its row id falls under the cutoff. The same database, `--pct` and `--seed` always give the same flights, so every reported number can be rerun exactly.
 
 ## Project structure
 
@@ -75,9 +78,10 @@ Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 2
 ├── notebooks/flight_delay_analysis.ipynb   # Python analysis (Q1–Q5), outputs included
 ├── r/flight_delay_analysis.Rmd             # Same analysis in R with mlr3 benchmark
 ├── src/model_v2.py                         # Leakage-free model, time-based split
+├── tests/                                  # pytest checks on a synthetic database
 ├── data/README.md                          # How to download the data
 ├── images/                                 # Charts used in this README
-└── requirements.txt
+└── requirements.txt                        # pinned versions (+ requirements-dev.txt for tests)
 ```
 
 ## How to run
@@ -87,9 +91,14 @@ Trained on a random 1% sample (282,428 flights from 2004–2007) and tested on 2
    ```bash
    pip install -r requirements.txt
    jupyter notebook notebooks/flight_delay_analysis.ipynb   # builds data/Fly.db
-   python src/model_v2.py --db data/Fly.db
+   python src/model_v2.py --db data/Fly.db          # same --pct and --seed give the same sample
    ```
 3. R: open `r/flight_delay_analysis.Rmd` in RStudio and knit.
+4. Tests (no data needed, they build a tiny synthetic database):
+   ```bash
+   pip install -r requirements-dev.txt
+   pytest
+   ```
 
 ## What I learned
 
