@@ -11,7 +11,10 @@ time-based split (train on 2004-2007, test on 2008), and compares it with
 the leaky setup so the difference is visible.
 
 Usage:
-    python src/model_v2.py --db data/Fly.db
+    python src/model_v2.py --db data/Fly.db [--pct 1] [--seed 42]
+
+The sample is deterministic: the same database, --pct and --seed always give
+the same flights, so every number this script prints can be reproduced.
 
 The database is the SQLite file built by the notebook (tables
 `flightdetails` and `planes`).
@@ -46,13 +49,31 @@ SELECT f.Year, f.Month, f.DayOfWeek, f.CRSDepTime, f.CRSArrTime, f.CRSElapsedTim
 FROM flightdetails f
 LEFT JOIN planes p ON f.TailNum = p.tailnum
 WHERE f.ArrDelay IS NOT NULL
-  AND ABS(RANDOM()) % 100 < {pct}
+  AND in_sample(f.rowid) = 1
 """
 
+MASK64 = (1 << 64) - 1
 
-def load(db_path, pct):
+
+def row_hash(rowid, seed):
+    """Deterministic 64-bit hash of a row id (splitmix64), spread evenly over 0..2^64-1."""
+    z = (rowid + seed * 0x9E3779B97F4A7C15) & MASK64
+    z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & MASK64
+    z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & MASK64
+    return z ^ (z >> 31)
+
+
+def in_sample(rowid, pct, seed):
+    """Keep a row if its hash falls in the lowest pct percent. Same inputs, same answer."""
+    return int(row_hash(rowid, seed) % 10_000 < pct * 100)
+
+
+def load(db_path, pct, seed=42):
+    # SQLite's RANDOM() cannot be seeded, so sampling is done with a fixed hash of
+    # each row id instead: unlike RANDOM(), rerunning gives the same sample.
     with sqlite3.connect(db_path) as conn:
-        df = pd.read_sql_query(QUERY.format(pct=pct), conn)
+        conn.create_function("in_sample", 1, lambda rowid: in_sample(rowid, pct, seed), deterministic=True)
+        df = pd.read_sql_query(QUERY, conn)
     for col in ["CRSDepTime", "CRSArrTime", "CRSElapsedTime", "Distance", "DepTime",
                 "DepDelay", "TaxiOut", "TaxiIn", "AirTime", "ArrDelay", "PlaneAge", "Year"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -95,11 +116,13 @@ def boosting(num, cat):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(ROOT / "data" / "Fly.db"))
-    ap.add_argument("--pct", type=int, default=1, help="percent of flights to sample (default 1; sample is random, so results vary slightly between runs)")
+    ap.add_argument("--pct", type=float, default=1, help="percent of flights to sample (default 1)")
+    ap.add_argument("--seed", type=int, default=42, help="sampling seed (default 42); same seed, same sample")
     args = ap.parse_args()
 
-    df = load(args.db, args.pct)
-    print(f"Sampled {len(df):,} flights; {df['Delayed'].mean():.1%} arrived 15+ min late")
+    df = load(args.db, args.pct, args.seed)
+    print(f"Sampled {len(df):,} flights (pct={args.pct}, seed={args.seed}); "
+          f"{df['Delayed'].mean():.1%} arrived 15+ min late")
 
     # Delay rate by actual vs scheduled departure time. Grouping by actual DepTime
     # pushes late-running evening flights into "Night", inflating its delay rate.
@@ -126,7 +149,8 @@ def main():
     for name, (build, num, cat) in setups.items():
         model = build(num, cat).fit(train[num + cat], train["Delayed"])
         auc = roc_auc_score(test["Delayed"], model.predict_proba(test[num + cat])[:, 1])
-        results.append({"model": name, "test_auc": round(auc, 3)})
+        results.append({"model": name, "test_auc": round(auc, 3), "n_train": len(train), "n_test": len(test),
+                        "pct": args.pct, "seed": args.seed})
         fitted[name] = (model, num + cat)
         print(f"{name}: AUC {auc:.3f}")
 
