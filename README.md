@@ -30,8 +30,8 @@ Using the [ASA Data Expo 2009](https://doi.org/10.7910/DVN/HG7NV7) flight data, 
 | Question | Answer |
 |---|---|
 | Time of day | Mornings are best (15.6% late). Evenings are worst (30.9%).* |
-| Day and season | Friday is the worst day (27.3%). Winter is the worst season (28.3%) and autumn the best (19.2%). |
-| Plane age | Planes over 20 years old are late a little more often than planes under 10 (27.0% vs 24.2%). |
+| Day and season | Friday is the worst day (25.9%) and Saturday the best (18.5%). Winter (25.4%) and summer (25.0%) are the worst seasons, and autumn the best (19.2%). |
+| Plane age | Age makes little difference: planes over 20 years old are late 23.9% of the time, against 22.6% for planes up to 10 years old.† |
 | Number of flights | Flights started falling across the US in December 2007. |
 | Knock-on delays | By following each plane's tail number, I traced how a late arrival makes the same plane's next departure late. |
 | Prediction | See the model section below. |
@@ -46,6 +46,14 @@ Using the [ASA Data Expo 2009](https://doi.org/10.7910/DVN/HG7NV7) flight data, 
 | Night (21:00–04:59) | 27.1% | 41.5% | 1,637,795 |
 
 These come from all 30,578,778 flights that arrived (cancelled and diverted flights have no arrival delay, so they are left out). `src/time_of_day.py` recomputes them and redraws the chart.
+
+†Plane age is the flight's year minus the year the plane was built. A quarter of flights (7,658,924) have no usable build year, either because the plane is missing from the plane data or because its year is blank or 0, so they are left out of the age groups. My coursework version counted the planes with year 0 as about 2,000 years old, which put them in the "old" group. The gap that remains is also a plain comparison: older planes may fly for different airlines or routes, so it doesn't show that age itself causes delays.
+
+The day, season and plane-age numbers come from `src/findings.py`, which counts every arrived flight, saves the tables to `results/` and redraws these charts:
+
+| Day of week | Season | Plane age |
+|---|---|---|
+| ![Delay rate by day of week](images/delay_rate_by_day_of_week.png) | ![Delay rate by season](images/delay_rate_by_season.png) | ![Delay rate by plane age](images/delay_rate_by_aircraft_age.png) |
 
 ## The model, and the mistake I found
 
@@ -113,6 +121,8 @@ These models learned from a 1% sample: 282,428 flights from 2004–2007. They we
 ├── r/flight_delay_analysis.Rmd             # The same analysis in R
 ├── src/model_v2.py                         # The honest model (before-departure information only)
 ├── src/time_of_day.py                      # Delay rate by scheduled vs actual departure time (the top chart)
+├── src/findings.py                         # Delay rate by day, season and plane age (writes results/)
+├── results/                                # The tables behind the README's numbers
 ├── tests/                                  # Automated checks that run on fake data
 ├── data/README.md                          # How to download the data
 ├── images/                                 # Charts used in this README
@@ -128,6 +138,7 @@ These models learned from a 1% sample: 282,428 flights from 2004–2007. They we
    jupyter notebook notebooks/flight_delay_analysis.ipynb   # builds data/Fly.db
    python src/model_v2.py --db data/Fly.db                  # same --pct and --seed give the same sample
    python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
+   python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
    ```
 3. R: open `r/flight_delay_analysis.Rmd` in RStudio and knit.
 4. Tests (no data needed, as they build a tiny fake database):
