@@ -9,7 +9,7 @@ I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. Th
 ## In 30 seconds
 
 - **Data:** 31 million flights, loaded into a SQLite database.
-- **Best time to fly:** the morning. 15.5% of morning flights are late, against 30.6% in the evening.
+- **Best time to fly:** the morning. 15.6% of flights scheduled to leave in the morning are late, against 30.9% in the evening.
 - **The model:** the first version scored 0.93–0.98 AUC, which was too good to be true. It used the departure delay to predict the arrival delay. With only information known before take-off, the honest score is **0.641**.
 - **The lesson:** always check *when* each piece of information becomes known.
 
@@ -29,21 +29,23 @@ Using the [ASA Data Expo 2009](https://doi.org/10.7910/DVN/HG7NV7) flight data, 
 
 | Question | Answer |
 |---|---|
-| Time of day | Mornings are best (15.5% late). Evenings are worst (30.6%).* |
+| Time of day | Mornings are best (15.6% late). Evenings are worst (30.9%).* |
 | Day and season | Friday is the worst day (27.3%). Winter is the worst season (28.3%) and autumn the best (19.2%). |
 | Plane age | Planes over 20 years old are late a little more often than planes under 10 (27.0% vs 24.2%). |
 | Number of flights | Flights started falling across the US in December 2007. |
 | Knock-on delays | By following each plane's tail number, I traced how a late arrival makes the same plane's next departure late. |
 | Prediction | See the model section below. |
 
-\*These rates group flights by their **scheduled** departure time. The chart above groups them by **actual** departure time, which makes night look worst (40.9%). That's misleading: a late evening flight that leaves after 9 pm gets counted as a "night" flight. The table below compares the two.
+\*These rates group flights by their **scheduled** departure time, the time a passenger sees when booking. My coursework chart grouped them by **actual** departure time instead, which made night look worst (41.5%). That was misleading: an evening flight that runs late and leaves after 9 pm gets counted as a "night" flight, so night collects other slots' delays. The chart at the top shows both groupings side by side.
 
-| Time of day | Late, grouped by actual departure | Late, grouped by scheduled departure |
-|---|---|---|
-| Morning | 13.9% | 15.5% |
-| Afternoon | 23.1% | 24.4% |
-| Evening | 30.9% | **30.6%** |
-| Night | 40.9% | 26.5% |
+| Time of day | Late, grouped by scheduled departure | Late, grouped by actual departure | Flights (by scheduled time) |
+|---|---|---|---|
+| Morning (05:00–11:59) | 15.6% | 13.9% | 12,365,755 |
+| Afternoon (12:00–16:59) | 24.6% | 23.4% | 9,621,903 |
+| Evening (17:00–20:59) | **30.9%** | 31.1% | 6,953,325 |
+| Night (21:00–04:59) | 27.1% | 41.5% | 1,637,795 |
+
+These come from all 30,578,778 flights that arrived (cancelled and diverted flights have no arrival delay, so they are left out). `src/time_of_day.py` recomputes them and redraws the chart.
 
 ## The model, and the mistake I found
 
@@ -110,6 +112,7 @@ These models learned from a 1% sample: 282,428 flights from 2004–2007. They we
 ├── notebooks/flight_delay_analysis.ipynb   # Python analysis (questions 1–5), with outputs
 ├── r/flight_delay_analysis.Rmd             # The same analysis in R
 ├── src/model_v2.py                         # The honest model (before-departure information only)
+├── src/time_of_day.py                      # Delay rate by scheduled vs actual departure time (the top chart)
 ├── tests/                                  # Automated checks that run on fake data
 ├── data/README.md                          # How to download the data
 ├── images/                                 # Charts used in this README
@@ -124,6 +127,7 @@ These models learned from a 1% sample: 282,428 flights from 2004–2007. They we
    pip install -r requirements.txt
    jupyter notebook notebooks/flight_delay_analysis.ipynb   # builds data/Fly.db
    python src/model_v2.py --db data/Fly.db                  # same --pct and --seed give the same sample
+   python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
    ```
 3. R: open `r/flight_delay_analysis.Rmd` in RStudio and knit.
 4. Tests (no data needed, as they build a tiny fake database):
