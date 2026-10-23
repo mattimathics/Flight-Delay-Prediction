@@ -1,0 +1,7 @@
+model,test_auc,flagged_flights,late_rate_in_flagged,late_rate_overall,times_the_average,share_of_late_flights_caught,n_train,n_test,pct,seed
+Benchmark: route's past delay rate (no model),0.5889,2336,0.348,0.2553,1.3631,0.1363,282717,23363,1,42
+"v2 gradient boosting (timetable, route, airline, plane age)",0.6419,2336,0.4443,0.2553,1.7404,0.174,282717,23363,1,42
+v3 gradient boosting + airport busyness only,0.6436,2336,0.4414,0.2553,1.7286,0.1728,282717,23363,1,42
+v3 gradient boosting + route history only,0.6412,2336,0.4414,0.2553,1.7286,0.1728,282717,23363,1,42
+v3 logistic regression (all new features),0.6334,2336,0.4212,0.2553,1.6498,0.165,282717,23363,1,42
+v3 gradient boosting (all new features),0.642,2336,0.4431,0.2553,1.7353,0.1735,282717,23363,1,42
