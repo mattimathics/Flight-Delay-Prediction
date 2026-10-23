@@ -93,3 +93,26 @@ def test_runs_end_to_end_on_the_random_database(db):
     results, _ = model_v4.model_v3.fit_and_score(train, test, model_v4.SETUPS)
     assert list(results["model"])[1:] == list(model_v4.SETUPS)
     assert len(model_v4.plot_riskiest(results).patches) == 3
+
+
+def flight_at_cutoff(path, cutoff_minutes):
+    import model_v3
+    df = model_v4.add_same_day_features(model_v3.load(path, pct=100, seed=42), path, cutoff_minutes)
+    return df[(df["Origin"] == "ORD") & (df["CRSDepTime"] == 1800)].iloc[0]
+
+
+def test_one_hour_cutoff_sees_more_recent_flights(day):
+    # Cutoff 17:00: window 14:00-16:45 holds 14:00 (on time), 15:45 (late), 15:50 (late)
+    assert flight_at_cutoff(day, 60)["AirportLateShareEarlier"] == pytest.approx(2 / 3)
+
+
+def test_four_hour_cutoff_sees_only_older_flights(day):
+    # Cutoff 14:00: window 11:00-13:45 holds 12:55 (late) and 13:00 (late)
+    flight = flight_at_cutoff(day, 240)
+    assert flight["AirportLateShareEarlier"] == 1.0
+    # The plane's previous flight took off at 14:00, exactly at the cutoff, so it counts
+    assert flight["PlanePrevDepDelay"] == 60
+
+
+def test_four_and_a_bit_hour_cutoff_cannot_see_the_previous_take_off(day):
+    assert np.isnan(flight_at_cutoff(day, 241)["PlanePrevDepDelay"])
