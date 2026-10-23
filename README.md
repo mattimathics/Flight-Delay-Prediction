@@ -149,11 +149,45 @@ Same 1% sample and same 2008 test flights as Steps 3 and 4. The airport's earlie
 - **This is still not leakage.** The leaky model scored 0.996 because it was given the flight's own delay. This one only sees other flights, and only what had already happened 2 hours before.
 - **The two models answer different questions.** The timetable model (0.642) works weeks ahead, for planning schedules. The 2-hour model (0.751) works on the day, for operations.
 
+**Step 6: can its percentages be trusted, and when should it raise an alert?** (`src/check_probabilities.py`). A ranking is useful, but an airline acting on "70% chance of delay" needs that 70% to be true. I grouped the 2008 test flights by the 2-hour model's predicted chance and checked how many in each group were really late.
+
+![Predicted chance vs reality](images/calibration_v4.png)
+
+| Predicted chance | Flights | Model's average prediction | Really late |
+|---|---|---|---|
+| 0–10% | 5,431 | 7.2% | 9.1% |
+| 10–20% | 8,233 | 14.5% | 16.7% |
+| 20–30% | 3,769 | 24.4% | 26.9% |
+| 30–40% | 2,083 | 34.5% | 34.0% |
+| 40–50% | 1,235 | 44.7% | 44.8% |
+| 50–60% | 914 | 54.7% | 54.4% |
+| 60–70% | 644 | 64.7% | 67.2% |
+| 70–80% | 504 | 74.9% | 77.2% |
+| 80–90% | 356 | 84.8% | 90.2% |
+| 90–100% | 194 | 93.5% | 95.4% |
+
+- **The percentages can be trusted.** On average, a group's prediction is 1.9 points away from what really happened, so no correction is needed.
+- **Where they are off, they run a little low.** The model expects 23.7% of 2008 flights to be late; 25.5% were. Delays became more common every year (20% in 2004, 24.7% in 2007), and a model trained on the past can't know that 2008 would be worse still.
+
+**Choosing an alert level.** It is worth acting on a flight when the expected cost of a delay is bigger than the cost of acting: chance of delay × cost of a missed delay > cost of acting. So the alert level is simply **cost of acting ÷ cost of a missed delay**. This only works because the percentages are trustworthy.
+
+| Alert if chance is at least | Flights flagged | Late, among flagged | Share of all late flights caught |
+|---|---|---|---|
+| 20% | 41.5% | 42.3% | 68.7% |
+| 25% | 32.1% | 47.5% | 59.6% |
+| 30% | 25.4% | 52.0% | 51.7% |
+| 40% | 16.5% | 61.8% | 39.9% |
+| 50% | 11.2% | 69.9% | 30.6% |
+| 70% | 4.5% | 84.9% | 15.0% |
+
+For example, if a missed delay costs four times as much as acting (an illustration, not a real airline figure), the alert level is 1 ÷ 4 = 25%. The model would flag about a third of flights and catch 60% of late ones. If acting is expensive, raise the level: at 70%, it flags 4.5% of flights and 85% of them are really late. `--cost-of-acting` and `--cost-of-missed-delay` let you plug in real costs.
+
 ## Terms used
 
 - **AUC:** how well a model ranks late flights above on-time ones. 0.5 is a coin flip and 1.0 is perfect.
 - **Target leakage:** giving a model information it would not have at the time it makes its prediction.
 - **Delayed:** arriving 15 or more minutes late. This is the US Federal Aviation Administration (FAA) definition.
+- **Calibration:** whether a model's percentages match reality. If it says 30% for a group of flights, about 30% should be late.
 - **Cutoff:** the moment the prediction is made. Anything that happens after it can't be used.
 - **Time-based split:** training on earlier years and testing on a later year, so the model never sees the future.
 - **Benchmark:** the simplest sensible way to do the job without a model. Here, ranking flights by how often their route was late in the past.
@@ -182,6 +216,7 @@ Same 1% sample and same 2008 test flights as Steps 3 and 4. The airport's earlie
 ├── src/model_v2.py                         # The honest model (before-departure information only)
 ├── src/model_v3.py                         # Adds airport busyness, route history, a benchmark and the riskiest-10% check
 ├── src/model_v4.py                         # Predicts 2 hours before departure, using delays already known that day
+├── src/check_probabilities.py              # Checks the 2-hour model's percentages and picks an alert level from costs
 ├── src/time_of_day.py                      # Delay rate by scheduled vs actual departure time (the top chart)
 ├── src/findings.py                         # Delay rate by day, season and plane age (writes results/)
 ├── results/                                # The tables behind the README's numbers
@@ -201,6 +236,7 @@ Same 1% sample and same 2008 test flights as Steps 3 and 4. The airport's earlie
    python src/model_v2.py --db data/Fly.db                  # same --pct and --seed give the same sample
    python src/model_v3.py --db data/Fly.db                  # stronger features, benchmark and riskiest-10% chart
    python src/model_v4.py --db data/Fly.db                  # 2 hours before departure
+   python src/check_probabilities.py --db data/Fly.db       # can the percentages be trusted? which alert level?
    python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
    python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
    ```
@@ -222,7 +258,6 @@ Same 1% sample and same 2008 test flights as Steps 3 and 4. The airport's earlie
 
 - Test other cutoffs (4 hours, 1 hour) to show how accuracy grows as departure gets closer.
 - Add weather data for each departure airport.
-- Check that the model's probabilities can be trusted, and choose an alert threshold based on the cost of a missed delay.
 - Put the model behind a small web API so others can use it.
 
 ## About
