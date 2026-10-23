@@ -209,14 +209,14 @@ A report more than 3 hours old is treated as unknown. All times are converted to
 
 | Method | Score on 2008 flights (AUC) | Late, among the riskiest 10% | Share of all late flights caught |
 |---|---|---|---|
-| Timetable only | 0.642 | 44.3% | 17.4% |
-| Timetable + weather | 0.704 | 60.4% | 23.7% |
+| Timetable only (weeks ahead) | 0.642 | 44.3% | 17.4% |
+| Timetable + weather, 2 hours before | 0.704 | 60.4% | 23.7% |
 | 2 hours before | 0.751 | 72.1% | 28.2% |
 | 2 hours before + weather | **0.780** | **76.0%** | **29.8%** |
 
 Weather is known at the departure airport for 90.6% of test flights, and at the arrival airport for 88.3%.
 
-- **Weather helps, and it helps most when little else is known.** It lifts the timetable model from 0.642 to 0.704, but the 2-hour model only from 0.751 to 0.780. The airport's earlier delays already reflect a bad-weather day, so some of the information was already there.
+- **Weather helps, and it helps most when little else is known.** Adding only the weather to the timetable features lifts the score from 0.642 to 0.704, but adding it to the full 2-hour model only lifts it from 0.751 to 0.780. Note that the 0.704 model is a 2-hour prediction too: weather on the day isn't known weeks ahead, so it doesn't improve the weeks-ahead model. The airport's earlier delays already reflect a bad-weather day, so some of the information was already there.
 - **The arrival airport matters too.** A storm at the destination delays the arrival even if the departure is on time.
 
 ## Terms used

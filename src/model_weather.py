@@ -40,7 +40,8 @@ WEATHER = ORIGIN_WEATHER + DEST_WEATHER
 CAT = model_v2.PRE_DEPARTURE_CAT
 SETUPS = {
     "Timetable only (v3)": (model_v2.boosting, model_v4.V3_NUM, CAT),
-    "Timetable + weather": (model_v2.boosting, model_v4.V3_NUM + WEATHER, CAT),
+    # Weather is only known on the day, so this is a 2-hour prediction, not a weeks-ahead one
+    "Timetable + weather (2 hours before)": (model_v2.boosting, model_v4.V3_NUM + WEATHER, CAT),
     "2 hours before (v4)": (model_v2.boosting, model_v4.V4_NUM, CAT),
     "2 hours before + weather": (model_v2.boosting, model_v4.V4_NUM + WEATHER, CAT),
 }
