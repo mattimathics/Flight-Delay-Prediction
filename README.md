@@ -200,6 +200,25 @@ For example, if a missed delay costs four times as much as acting (an illustrati
 - **This is the trade-off an airline faces:** wait longer and the warning is more accurate, but there is less time to act on it. 1 hour out, 86% of flagged flights are late, but there may be no spare crew left to call.
 - **Even 1 hour out, the honest model (0.795) is far from the leaky one (0.996).** That gap is what the leaky model was getting by being told the answer.
 
+**Step 8: adding the weather** (`src/download_weather.py`, `src/model_weather.py`). I downloaded the hourly weather reports that US airports publish, for 2004 to April 2008, from the [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/request/download.phtml) (Iowa State University). That covers 96 of the 100 busiest airports (232 MB); the other four aren't in the archive. For each flight, the model sees the **last report issued before the 2-hour mark** at both the departure and arrival airports:
+
+- visibility, wind speed, gusts, rain in the last hour and the height of the lowest cloud
+- whether a thunderstorm, snow or fog was reported
+
+A report more than 3 hours old is treated as unknown. All times are converted to one world clock (UTC). Without that, a New York to Los Angeles flight would have read Los Angeles weather from up to 3 hours after the cutoff, because Los Angeles clocks are 3 hours behind. My first version made exactly that mistake; a test now checks it.
+
+| Method | Score on 2008 flights (AUC) | Late, among the riskiest 10% | Share of all late flights caught |
+|---|---|---|---|
+| Timetable only (weeks ahead) | 0.642 | 44.3% | 17.4% |
+| Timetable + weather, 2 hours before | 0.704 | 60.4% | 23.7% |
+| 2 hours before | 0.751 | 72.1% | 28.2% |
+| 2 hours before + weather | **0.780** | **76.0%** | **29.8%** |
+
+Weather is known at the departure airport for 90.6% of test flights, and at the arrival airport for 88.3%.
+
+- **Weather helps, and it helps most when little else is known.** Adding only the weather to the timetable features lifts the score from 0.642 to 0.704, but adding it to the full 2-hour model only lifts it from 0.751 to 0.780. Note that the 0.704 model is a 2-hour prediction too: weather on the day isn't known weeks ahead, so it doesn't improve the weeks-ahead model. The airport's earlier delays already reflect a bad-weather day, so some of the information was already there.
+- **The arrival airport matters too.** A storm at the destination delays the arrival even if the departure is on time.
+
 ## Terms used
 
 - **AUC:** how well a model ranks late flights above on-time ones. 0.5 is a coin flip and 1.0 is perfect.
@@ -237,6 +256,8 @@ For example, if a missed delay costs four times as much as acting (an illustrati
 ├── src/check_probabilities.py              # Checks the 2-hour model's percentages and picks an alert level from costs
 ├── src/prediction_time.py                  # Same model at 4, 2 and 1 hours before departure
 ├── src/build_web_page.py                   # Saves every 2008 test flight's predictions for the web page
+├── src/download_weather.py                 # Downloads hourly airport weather (2004–Apr 2008) for the busiest airports
+├── src/model_weather.py                    # Adds the last weather report before the 2-hour mark
 ├── docs/                                   # The web page (index.html) and its data (flights.json)
 ├── src/time_of_day.py                      # Delay rate by scheduled vs actual departure time (the top chart)
 ├── src/findings.py                         # Delay rate by day, season and plane age (writes results/)
@@ -260,6 +281,8 @@ For example, if a missed delay costs four times as much as acting (an illustrati
    python src/check_probabilities.py --db data/Fly.db       # can the percentages be trusted? which alert level?
    python src/prediction_time.py --db data/Fly.db           # 4, 2 and 1 hours before departure
    python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json for the web page
+   python src/download_weather.py --db data/Fly.db          # about 230 MB into data/weather (needs curl)
+   python src/model_weather.py --db data/Fly.db             # 2-hour model with and without weather
    python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
    python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
    ```
@@ -279,7 +302,7 @@ For example, if a missed delay costs four times as much as acting (an illustrati
 
 ## What I'd do next
 
-- Add weather data for each departure airport.
+- Add weather to the web page.
 - Retrain on recent months, since delays became more common every year.
 
 ## About

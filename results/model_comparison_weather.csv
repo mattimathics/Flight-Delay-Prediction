@@ -1,0 +1,6 @@
+model,test_auc,flagged_flights,late_rate_in_flagged,late_rate_overall,times_the_average,share_of_late_flights_caught,n_train,n_test,pct,seed
+Benchmark: route's past delay rate (no model),0.5889,2336,0.348,0.2553,1.3631,0.1363,282717,23363,1,42
+Timetable only (v3),0.642,2336,0.4431,0.2553,1.7353,0.1735,282717,23363,1,42
+Timetable + weather (2 hours before),0.7042,2336,0.6045,0.2553,2.3674,0.2367,282717,23363,1,42
+2 hours before (v4),0.7513,2336,0.7213,0.2553,2.8252,0.2825,282717,23363,1,42
+2 hours before + weather,0.7799,2336,0.7598,0.2553,2.9761,0.2976,282717,23363,1,42
