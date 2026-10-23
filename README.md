@@ -12,7 +12,7 @@ I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. Th
 
 - **Data:** 31 million flights, loaded into a SQLite database.
 - **Best time to fly:** the morning. 15.6% of flights scheduled to leave in the morning are late, against 30.9% in the evening.
-- **The model:** the first version scored 0.93–0.98 AUC, which was too good to be true. It used the departure delay to predict the arrival delay. With only the timetable, the honest score is **0.642**. Predicting 2 hours before departure, using only what has already happened that day, it rises to **0.751**.
+- **The model:** the first version scored 0.93–0.98 AUC, which was too good to be true. It used the departure delay to predict the arrival delay. With only the timetable, the honest score is **0.654**, from a model that learned from 8.5 million flights. Predicting 2 hours before departure, using only what has already happened that day, it rises to **0.751** (so far measured on a 1% sample).
 - **What it's good for:** 2 hours out, the 10% of flights the model rates riskiest are late 72% of the time, against 25.5% for all 2008 flights. An airline could send standby crews and spare gates to that list.
 - **The lesson:** always check *when* each piece of information becomes known.
 
@@ -84,17 +84,23 @@ I tuned them with grid search in scikit-learn and compared them with cross-valid
 
 It learns from 2004–2007 flights and is tested on 2008 flights, as a real forecast would be. The leaky version is kept alongside so you can see the gap.
 
-| Model | Information used | Score on 2008 flights (AUC) |
-|---|---|---|
-| Logistic regression | Before departure only | 0.628 |
-| Gradient boosting | Before departure only | **0.642** |
-| Gradient boosting | Plus departure delay, taxi and air time (leaky) | 0.996 |
+| Model | Information used | AUC, 1% sample | AUC, 10% sample | AUC, 30% sample |
+|---|---|---|---|---|
+| Logistic regression | Before departure only | 0.628 | 0.628 | 0.629 |
+| Gradient boosting | Before departure only | 0.642 | 0.650 | **0.654** |
+| Gradient boosting | Plus departure delay, taxi and air time (leaky) | 0.996 | 0.998 | 0.998 |
+| | Flights learned from (2004–2007) | 282,717 | 2,824,284 | 8,477,419 |
+| | Flights tested on (2008) | 23,363 | 232,019 | 695,298 |
 
-These models learned from a 1% sample: 282,717 flights from 2004–2007. They were tested on 23,363 flights from 2008. The 2008 data only covers January to April. (An earlier version of this README said 0.627, 0.641 and 0.997. Those came from a random sample that could not be repeated. The script now picks the same sample every time, and these are its numbers.)
+The 2008 data only covers January to April. Each sample is a fixed share of all flights, picked the same way every time (`python src/model_v2.py --pct 30`). All three runs are saved in `results/model_comparison_v2_by_sample.csv`. 30% is the largest sample that fits in my laptop's memory: it peaked at 14.7 GB and took about 8 minutes. The chart below is from the 30% run.
+
+**More data helped gradient boosting a little (0.642 → 0.654) and logistic regression not at all.** Gradient boosting can pick up patterns for rare airports and routes, and more flights give it enough examples of each. Logistic regression gives each airport, airline and hour one fixed weight, and 1% of the data was already enough to set those. (An earlier version of this README said 0.627, 0.641 and 0.997. Those came from a random sample that could not be repeated.)
+
+Steps 4 to 7 below still use the 1% sample, so they compare against the 1% timetable score of 0.642.
 
 ![ROC curves, v2: pre-departure vs leaky features](images/roc_curve_v2.png)
 
-**What this means.** Predicting a delay from the timetable alone is hard. A score of about 0.64 is a modest but real signal. Adding the departure delay pushes it to 0.997, and that jump is the leakage. It is why the coursework scores were too good to be true.
+**What this means.** Predicting a delay from the timetable alone is hard. A score of about 0.65 is a modest but real signal. Adding the departure delay pushes it to 0.998, and that jump is the leakage. It is why the coursework scores were too good to be true.
 
 **Step 4: can the honest model do better?** (`src/model_v3.py`). I added three more things an airline knows before departure:
 
@@ -121,7 +127,7 @@ Same 1% sample and same 2008 test flights as Step 3. Across all 2008 test flight
 - **The model beats the benchmark clearly.** Its riskiest 10% of flights are late 44% of the time: 1.7 times the average. Ranking by route history alone gives 35%.
 - **The new features did not help gradient boosting.** It already knows the airport, route, airline and hour, so it had worked out most of this for itself. They did help the simpler logistic regression (0.628 → 0.633).
 - **More data helps a little, not a lot.** With a 5% sample (1,412,072 training flights), gradient boosting scored 0.647 with or without the new features (`python src/model_v3.py --pct 5`).
-- **The timetable alone has a ceiling of about 0.65.** Most delays come from things that happen on the day, like weather and late incoming planes. Getting past that ceiling means predicting closer to departure, using what has already gone wrong that day.
+- **The timetable alone has a ceiling of about 0.65.** Even 8.5 million training flights only reach 0.654 (Step 3). Most delays come from things that happen on the day, like weather and late incoming planes. Getting past that ceiling means predicting closer to departure, using what has already gone wrong that day.
 
 **Step 5: predicting 2 hours before departure** (`src/model_v4.py`). An airline re-plans crews and gates a couple of hours ahead, and by then it knows more. I moved the prediction to 2 hours before the scheduled departure and added only what is known at that moment:
 
