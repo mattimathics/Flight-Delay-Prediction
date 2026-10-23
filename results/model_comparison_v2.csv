@@ -1,4 +1,4 @@
 model,test_auc,n_train,n_test,pct,seed
-Logistic regression (pre-departure),0.628,282717,23363,1,42
-Gradient boosting (pre-departure),0.642,282717,23363,1,42
-"Gradient boosting (leaky: + DepDelay, taxi, air time)",0.996,282717,23363,1,42
+Logistic regression (pre-departure),0.629,8477419,695298,30.0,42
+Gradient boosting (pre-departure),0.654,8477419,695298,30.0,42
+"Gradient boosting (leaky: + DepDelay, taxi, air time)",0.998,8477419,695298,30.0,42
