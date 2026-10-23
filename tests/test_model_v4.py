@@ -26,7 +26,7 @@ def make_db(path, flights=FLIGHTS):
     rows = pd.DataFrame(flights, columns=["Name", "TailNum", "Origin", "Dest", "CRSDepTime", "CRSArrTime",
                                           "ArrTime", "ActualElapsedTime", "DepDelay"])
     rows = rows.assign(Year=2007, Month=1, DayofMonth=10, DayOfWeek=4, CRSElapsedTime=120, Distance=800,
-                       UniqueCarrier="AA", DepTime=rows["CRSDepTime"], TaxiOut=10, TaxiIn=5, AirTime=100,
+                       UniqueCarrier="AA", FlightNum=100, DepTime=rows["CRSDepTime"], TaxiOut=10, TaxiIn=5, AirTime=100,
                        ArrDelay=rows["DepDelay"].astype(float))
     with sqlite3.connect(path) as conn:
         rows.drop(columns="Name").to_sql("flightdetails", conn, index=False)

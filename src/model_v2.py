@@ -42,7 +42,7 @@ PRE_DEPARTURE_CAT = ["Month", "DayOfWeek", "UniqueCarrier", "Origin", "Dest"]
 LEAKY_NUM = ["DepDelay", "TaxiOut", "TaxiIn", "AirTime"]
 
 QUERY = """
-SELECT f.rowid AS FlightId, f.TailNum,
+SELECT f.rowid AS FlightId, f.TailNum, f.FlightNum,
        f.Year, f.Month, f.DayofMonth, f.DayOfWeek, f.CRSDepTime, f.CRSArrTime, f.CRSElapsedTime,
        f.Distance, f.UniqueCarrier, f.Origin, f.Dest,
        f.DepTime, f.DepDelay, f.TaxiOut, f.TaxiIn, f.AirTime, f.ArrDelay,

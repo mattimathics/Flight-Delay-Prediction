@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flight Delay Predictor</title>
+<meta name="description" content="Pick a real US flight from 2008 and see how likely a leak-free model thought it was to be late, weeks ahead and 4, 2 and 1 hour before departure.">
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #ffffff; --text: #1d2330; --muted: #5d6573; --line: #e2e5ea;
+    --accent: #1f5fa8; --accent-soft: #dce8f6; --late: #b3261e; --late-soft: #fbe4e2;
+    --ok: #1e7a3c; --ok-soft: #e1f2e6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --card: #1b2029; --text: #e8ebf0; --muted: #a2a9b5; --line: #2c3340;
+      --accent: #7fb0eb; --accent-soft: #24364d; --late: #f08a82; --late-soft: #4a2422;
+      --ok: #7fd197; --ok-soft: #1f3a28;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 48px; }
+  h1 { font-size: 1.9rem; margin: 0 0 6px; }
+  h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  p { margin: 0 0 12px; }
+  .lead { color: var(--muted); font-size: 1.05rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 20px; margin-top: 20px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+  label { display: flex; flex-direction: column; font-size: 0.85rem; color: var(--muted); gap: 4px; }
+  select, button { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+                   background: var(--card); color: var(--text); }
+  select { min-width: 200px; max-width: 100%; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); cursor: pointer; }
+  @media (prefers-color-scheme: dark) { button.primary { color: #12151b; } }
+  .flights { list-style: none; padding: 0; margin: 16px 0 0; max-height: 320px; overflow-y: auto;
+             border: 1px solid var(--line); border-radius: 8px; }
+  .flights li button { width: 100%; display: grid; grid-template-columns: 56px 1fr auto; gap: 10px;
+                       align-items: center; text-align: left; border: 0; border-bottom: 1px solid var(--line);
+                       border-radius: 0; cursor: pointer; padding: 10px 12px; }
+  .flights li button:hover, .flights li button[aria-pressed="true"] { background: var(--accent-soft); }
+  .time { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .sub { color: var(--muted); font-size: 0.85rem; }
+  .chip { font-variant-numeric: tabular-nums; font-size: 0.85rem; padding: 2px 8px; border-radius: 999px;
+          background: var(--accent-soft); white-space: nowrap; }
+  .bars { display: grid; gap: 8px; margin: 12px 0 4px; }
+  .bar-row { display: grid; grid-template-columns: 120px 1fr 48px; gap: 10px; align-items: center; }
+  .bar-track { background: var(--line); border-radius: 6px; height: 14px; overflow: hidden; }
+  .bar-fill { background: var(--accent); height: 100%; }
+  .pct { text-align: right; font-variant-numeric: tabular-nums; }
+  .outcome { display: inline-block; padding: 4px 10px; border-radius: 8px; font-weight: 600; }
+  .outcome.late { background: var(--late-soft); color: var(--late); }
+  .outcome.ok { background: var(--ok-soft); color: var(--ok); }
+  .facts { padding-left: 20px; margin: 8px 0 12px; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  th { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+  a { color: var(--accent); }
+  .empty { color: var(--muted); }
+  @media (max-width: 560px) {
+    h1 { font-size: 1.5rem; }
+    .bar-row { grid-template-columns: 96px 1fr 44px; }
+    select { min-width: 0; width: 100%; }
+    label { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Will this flight be late?</h1>
+  <p class="lead">Pick a real US flight from January to April 2008 and see how likely my model thought it was to arrive
+    15+ minutes late, and what actually happened. The model learned from 2004–2007 only, so it never saw these flights.</p>
+
+  <section class="card">
+    <h2>1. Pick a flight</h2>
+    <div class="controls">
+      <label>Departure airport <select id="airport"></select></label>
+      <label>Date <select id="date"></select></label>
+      <button class="primary" id="risky" type="button">Show me a risky flight</button>
+    </div>
+    <ul class="flights" id="flights"></ul>
+  </section>
+
+  <section class="card" id="detail" aria-live="polite">
+    <p class="empty">Choose a flight above to see its prediction.</p>
+  </section>
+
+  <section class="card">
+    <h2>How good is the model overall?</h2>
+    <p id="overall"></p>
+    <table>
+      <thead><tr><th>Prediction made</th><th>Score (AUC)</th><th>Riskiest 10% that were late</th></tr></thead>
+      <tbody id="summary"></tbody>
+    </table>
+    <p class="sub" style="margin-top:12px">AUC measures how well the model ranks late flights above on-time ones:
+      0.5 is a coin flip, 1.0 is perfect. My first model scored 0.996, but it was cheating: it was given each
+      flight's own departure delay. Every prediction on this page uses only what was known at the time.</p>
+  </section>
+
+  <p class="sub" style="margin-top:20px">Built by Matthew James Tan.
+    <a href="https://github.com/mattimathics/Flight-Delay-Prediction">Code, method and results on GitHub</a>.
+    Data: ASA Data Expo 2009.</p>
+</main>
+
+<script>
+// Each prediction time, the flight field holding its chance of delay, and a short label
+const TIMES = [
+  ["risk_weeks", "Weeks ahead"],
+  ["risk_4h", "4 hours before"],
+  ["risk_2h", "2 hours before"],
+  ["risk_1h", "1 hour before"],
+];
+let data, flights;
+
+// "1805" -> "18:05"
+function clock(hhmm) {
+  const padded = String(hhmm).padStart(4, "0");
+  return padded.slice(0, 2) + ":" + padded.slice(2);
+}
+
+// "2008-01-10" -> "Thu 10 Jan 2008"
+function niceDate(iso) {
+  const d = new Date(iso + "T12:00:00");
+  return d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+
+function percent(share) {
+  return Math.round(share * 100) + "%";
+}
+
+// The JSON stores each flight as a short list; turn it into an object with named fields
+function toObjects(json) {
+  return json.flights.map(row => Object.fromEntries(json.columns.map((name, i) => [name, row[i]])));
+}
+
+function fillAirports() {
+  // Busiest airports first, since they have the most flights to pick from
+  const counts = {};
+  flights.forEach(f => { counts[f.origin] = (counts[f.origin] || 0) + 1; });
+  const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  airport.innerHTML = codes.map(code =>
+    `<option value="${code}">${code} · ${data.airports[code]} (${counts[code]} flights)</option>`).join("");
+}
+
+function fillDates() {
+  const dates = [...new Set(flights.filter(f => f.origin === airport.value).map(f => f.date))].sort();
+  date.innerHTML = dates.map(d => `<option value="${d}">${niceDate(d)}</option>`).join("");
+}
+
+function fillFlights() {
+  const chosen = flights.filter(f => f.origin === airport.value && f.date === date.value);
+  list.innerHTML = "";
+  chosen.forEach(f => {
+    const item = document.createElement("li");
+    item.innerHTML = `<button type="button" aria-pressed="false">
+        <span class="time">${clock(f.scheduled_departure)}</span>
+        <span>to ${f.dest} · ${data.airports[f.dest]}<br>
+          <span class="sub">${data.carriers[f.carrier]} ${f.carrier} ${f.flight_number}</span></span>
+        <span class="chip">${percent(f.risk_2h)} at 2 h</span>
+      </button>`;
+    item.querySelector("button").addEventListener("click", () => showFlight(f, item.querySelector("button")));
+    list.appendChild(item);
+  });
+}
+
+// Plain-English sentences for what the model knew 2 hours before departure
+function factsAtTwoHours(f) {
+  const facts = [];
+  if (f.airport_late_share === null) {
+    facts.push(`No earlier flights from ${f.origin} that day to learn from yet.`);
+  } else {
+    facts.push(`${percent(f.airport_late_share)} of ${f.origin}'s flights in the previous 3 hours had left 15+ minutes late.`);
+  }
+  if (f.turnaround_minutes === null) {
+    facts.push("This plane's previous flight today wasn't found, so there's no turnaround information.");
+  } else {
+    facts.push(`The plane was scheduled to land here ${f.turnaround_minutes} minutes before this departure.`);
+  }
+  if (f.previous_flight_delay !== null) {
+    const late = f.previous_flight_delay;
+    facts.push(late > 0 ? `Its previous flight had taken off ${late} minutes late.`
+                        : "Its previous flight had taken off on time.");
+  } else if (f.turnaround_minutes !== null) {
+    facts.push("Its previous flight hadn't taken off yet, so its delay wasn't known.");
+  }
+  return facts;
+}
+
+function showFlight(f, button) {
+  list.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", "false"));
+  if (button) button.setAttribute("aria-pressed", "true");
+  const bars = TIMES.map(([field, label]) => `
+    <div class="bar-row"><span>${label}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${percent(f[field])}"></div></div>
+      <span class="pct">${percent(f[field])}</span></div>`).join("");
+  const outcome = f.late
+    ? `<span class="outcome late">Late: arrived ${f.arrival_delay} minutes behind schedule</span>`
+    : `<span class="outcome ok">On time: ${f.arrival_delay > 0 ? "arrived " + f.arrival_delay + " minutes late" : "arrived on or before schedule"}</span>`;
+  detail.innerHTML = `
+    <h2>2. ${data.carriers[f.carrier]} ${f.carrier} ${f.flight_number}: ${f.origin} → ${f.dest}</h2>
+    <p class="sub">${niceDate(f.date)}, scheduled to leave ${data.airports[f.origin]} at ${clock(f.scheduled_departure)}
+      for ${data.airports[f.dest]}</p>
+    <p><strong>Chance of arriving 15+ minutes late, as predicted:</strong></p>
+    <div class="bars">${bars}</div>
+    <p class="sub">On average, ${percent(data.summary.late_overall)} of these flights were late.</p>
+    <p style="margin-top:16px"><strong>What the model knew 2 hours before departure:</strong></p>
+    <ul class="facts">${factsAtTwoHours(f).map(t => `<li>${t}</li>`).join("")}</ul>
+    <p><strong>What happened:</strong> ${outcome}</p>`;
+}
+
+// Jump to a random flight the 2-hour model rated 70%+ likely to be late
+function showRiskyFlight() {
+  const risky = flights.filter(f => f.risk_2h >= 0.7);
+  const f = risky[Math.floor(Math.random() * risky.length)];
+  airport.value = f.origin;
+  fillDates();
+  date.value = f.date;
+  fillFlights();
+  const index = flights.filter(x => x.origin === f.origin && x.date === f.date).indexOf(f);
+  const button = list.querySelectorAll("button")[index];
+  button.scrollIntoView({ block: "nearest" });
+  showFlight(f, button);
+}
+
+function fillSummary() {
+  const s = data.summary;
+  overall.textContent = `Tested on ${s.flights.toLocaleString("en-GB")} flights from January to April 2008, ` +
+    `of which ${percent(s.late_overall)} arrived 15+ minutes late.`;
+  summaryBody.innerHTML = s.by_time.map(row =>
+    `<tr><td>${row.prediction_time}</td><td>${row.auc.toFixed(3)}</td><td>${percent(row.late_in_riskiest_10pct)}</td></tr>`
+  ).join("");
+}
+
+const airport = document.getElementById("airport");
+const date = document.getElementById("date");
+const list = document.getElementById("flights");
+const detail = document.getElementById("detail");
+const overall = document.getElementById("overall");
+const summaryBody = document.getElementById("summary");
+
+fetch("flights.json")
+  .then(response => response.json())
+  .then(json => {
+    data = json;
+    flights = toObjects(json);
+    fillAirports();
+    fillDates();
+    fillFlights();
+    fillSummary();
+    airport.addEventListener("change", () => { fillDates(); fillFlights(); });
+    date.addEventListener("change", fillFlights);
+    document.getElementById("risky").addEventListener("click", showRiskyFlight);
+  });
+</script>
+</body>
+</html>

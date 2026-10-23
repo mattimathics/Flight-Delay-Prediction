@@ -24,6 +24,7 @@ def db(tmp_path):
         "CRSElapsedTime": rng.integers(40, 300, n),
         "Distance": rng.integers(100, 2500, n),
         "UniqueCarrier": rng.choice(["AA", "UA", "WN"], n),
+        "FlightNum": rng.integers(1, 3000, n),
         "Origin": rng.choice(["ORD", "ATL", "SFO"], n),
         "Dest": rng.choice(["LAX", "JFK", "DEN"], n),
         "DepTime": rng.integers(0, 2400, n),
