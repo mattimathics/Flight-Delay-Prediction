@@ -40,9 +40,9 @@ import model_v3
 
 ROOT = Path(__file__).resolve().parents[1]
 
-CUTOFF_MINUTES = 120         # we predict 2 hours before scheduled departure
-WINDOW_START_MINUTES = 300   # look at the airport's flights from 5 hours before ours...
-LATE_MINUTES = 15            # ...up to the last one whose 15-minute lateness is known by the cutoff
+CUTOFF_MINUTES = 120   # we predict 2 hours before scheduled departure
+WINDOW_MINUTES = 180   # look at the airport's flights scheduled in the 3 hours before the cutoff...
+LATE_MINUTES = 15      # ...up to the last one whose 15-minute lateness is known by the cutoff
 # Placeholder tail numbers that many unrelated planes share in the data
 JUNK_TAILS = {"0", "000000", "UNKNOW", "NA", ""}
 
@@ -63,13 +63,14 @@ SETUPS = {
 
 # CROSS JOIN makes SQLite read flightdetails once and look each row up in the
 # small table of sampled flights (as in model_v3).
+# The two ? are the window's start and end, in minutes before our departure.
 AIRPORT_EARLIER_QUERY = f"""
 SELECT s.FlightId, COUNT(*) AS EarlierFlights, SUM(f.DepDelay >= {LATE_MINUTES}) AS EarlierLate
 FROM flightdetails f
 CROSS JOIN sampled s
 WHERE f.Year = s.Year AND f.Month = s.Month AND f.DayofMonth = s.DayofMonth AND f.Origin = s.Origin
   AND (f.CRSDepTime / 100) * 60 + f.CRSDepTime % 100
-      BETWEEN s.DepMinutes - {WINDOW_START_MINUTES} AND s.DepMinutes - {CUTOFF_MINUTES + LATE_MINUTES}
+      BETWEEN s.DepMinutes - ? AND s.DepMinutes - ?
   AND f.DepDelay IS NOT NULL
 GROUP BY s.FlightId
 """
@@ -112,9 +113,10 @@ def save_sampled_flights(conn, df):
     conn.execute("CREATE INDEX temp.sampled_plane ON sampled (Year, Month, DayofMonth, TailNum)")
 
 
-def airport_earlier_delays(conn):
+def airport_earlier_delays(conn, cutoff_minutes):
     """Share of the airport's earlier flights already known to be 15+ min late at the cutoff."""
-    earlier = pd.read_sql_query(AIRPORT_EARLIER_QUERY, conn)
+    window = (cutoff_minutes + WINDOW_MINUTES, cutoff_minutes + LATE_MINUTES)
+    earlier = pd.read_sql_query(AIRPORT_EARLIER_QUERY, conn, params=window)
     earlier["AirportLateShareEarlier"] = earlier["EarlierLate"] / earlier["EarlierFlights"]
     return earlier[["FlightId", "AirportLateShareEarlier"]]
 
@@ -128,11 +130,11 @@ def plane_previous_flight(conn):
     return previous
 
 
-def add_same_day_features(df, db_path):
-    """Add the three features an airline would know 2 hours before departure."""
+def add_same_day_features(df, db_path, cutoff_minutes=CUTOFF_MINUTES):
+    """Add the three features an airline would know cutoff_minutes before departure."""
     with sqlite3.connect(db_path) as conn:
         save_sampled_flights(conn, df)
-        earlier = airport_earlier_delays(conn)
+        earlier = airport_earlier_delays(conn, cutoff_minutes)
         previous = plane_previous_flight(conn)
 
     df = df.merge(earlier, on="FlightId", how="left")
@@ -148,7 +150,7 @@ def add_same_day_features(df, db_path):
     landed = to_minutes(df["PrevArrTime"])
     landed = landed.where(landed >= to_minutes(df["PrevCRSDepTime"]), landed + 24 * 60)
     took_off = landed - df["PrevElapsed"]
-    known_by_cutoff = took_off <= dep_minutes - CUTOFF_MINUTES
+    known_by_cutoff = took_off <= dep_minutes - cutoff_minutes
     df["PlanePrevDepDelay"] = df["PrevDepDelay"].where(known_by_cutoff)
     return df.drop(columns=["PrevCRSDepTime", "PrevCRSArrTime", "PrevArrTime", "PrevElapsed", "PrevDepDelay"])
 

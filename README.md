@@ -182,6 +182,22 @@ Same 1% sample and same 2008 test flights as Steps 3 and 4. The airport's earlie
 
 For example, if a missed delay costs four times as much as acting (an illustration, not a real airline figure), the alert level is 1 ÷ 4 = 25%. The model would flag about a third of flights and catch 60% of late ones. If acting is expensive, raise the level: at 70%, it flags 4.5% of flights and 85% of them are really late. `--cost-of-acting` and `--cost-of-missed-delay` let you plug in real costs.
 
+**Step 7: how much does it help to wait?** (`src/prediction_time.py`). I rebuilt the same model with the cutoff at 4 hours, 2 hours and 1 hour before departure. At each cutoff it sees only what had happened by then, so later cutoffs know more.
+
+![Score by prediction time](images/prediction_time.png)
+
+| Prediction made | Score on 2008 flights (AUC) | Late, among the riskiest 10% | Share of all late flights caught | Plane's previous take-off known |
+|---|---|---|---|---|
+| Weeks ahead (timetable only) | 0.642 | 44.3% | 17.4% | – |
+| 4 hours before | 0.693 | 58.4% | 22.9% | 12.5% of flights |
+| 2 hours before | 0.751 | 72.1% | 28.2% | 52.9% |
+| 1 hour before | 0.795 | 85.6% | 33.5% | 73.7% |
+| After take-off (leaky) | 0.996 | 100% | 39.2% | – |
+
+- **Every hour closer adds accuracy**, mostly because more incoming planes have already taken off. At 4 hours, 12.5% of flights have that information. At 1 hour, 73.7% do.
+- **This is the trade-off an airline faces:** wait longer and the warning is more accurate, but there is less time to act on it. 1 hour out, 86% of flagged flights are late, but there may be no spare crew left to call.
+- **Even 1 hour out, the honest model (0.795) is far from the leaky one (0.996).** That gap is what the leaky model was getting by being told the answer.
+
 ## Terms used
 
 - **AUC:** how well a model ranks late flights above on-time ones. 0.5 is a coin flip and 1.0 is perfect.
@@ -217,6 +233,7 @@ For example, if a missed delay costs four times as much as acting (an illustrati
 ├── src/model_v3.py                         # Adds airport busyness, route history, a benchmark and the riskiest-10% check
 ├── src/model_v4.py                         # Predicts 2 hours before departure, using delays already known that day
 ├── src/check_probabilities.py              # Checks the 2-hour model's percentages and picks an alert level from costs
+├── src/prediction_time.py                  # Same model at 4, 2 and 1 hours before departure
 ├── src/time_of_day.py                      # Delay rate by scheduled vs actual departure time (the top chart)
 ├── src/findings.py                         # Delay rate by day, season and plane age (writes results/)
 ├── results/                                # The tables behind the README's numbers
@@ -237,6 +254,7 @@ For example, if a missed delay costs four times as much as acting (an illustrati
    python src/model_v3.py --db data/Fly.db                  # stronger features, benchmark and riskiest-10% chart
    python src/model_v4.py --db data/Fly.db                  # 2 hours before departure
    python src/check_probabilities.py --db data/Fly.db       # can the percentages be trusted? which alert level?
+   python src/prediction_time.py --db data/Fly.db           # 4, 2 and 1 hours before departure
    python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
    python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
    ```
@@ -256,7 +274,6 @@ For example, if a missed delay costs four times as much as acting (an illustrati
 
 ## What I'd do next
 
-- Test other cutoffs (4 hours, 1 hour) to show how accuracy grows as departure gets closer.
 - Add weather data for each departure airport.
 - Put the model behind a small web API so others can use it.
 
