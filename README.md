@@ -6,6 +6,8 @@
 
 I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. Then I built a model to predict delays. My first model looked almost perfect, but it was cheating: it used information that only exists after take-off. I found the problem, rebuilt the model honestly, and kept both results side by side.
 
+**[Try it: pick a real 2008 flight and see what the model predicted](https://mattimathics.github.io/Flight-Delay-Prediction/)**
+
 ## In 30 seconds
 
 - **Data:** 31 million flights, loaded into a SQLite database.
@@ -234,6 +236,8 @@ For example, if a missed delay costs four times as much as acting (an illustrati
 ├── src/model_v4.py                         # Predicts 2 hours before departure, using delays already known that day
 ├── src/check_probabilities.py              # Checks the 2-hour model's percentages and picks an alert level from costs
 ├── src/prediction_time.py                  # Same model at 4, 2 and 1 hours before departure
+├── src/build_web_page.py                   # Saves every 2008 test flight's predictions for the web page
+├── docs/                                   # The web page (index.html) and its data (flights.json)
 ├── src/time_of_day.py                      # Delay rate by scheduled vs actual departure time (the top chart)
 ├── src/findings.py                         # Delay rate by day, season and plane age (writes results/)
 ├── results/                                # The tables behind the README's numbers
@@ -255,6 +259,7 @@ For example, if a missed delay costs four times as much as acting (an illustrati
    python src/model_v4.py --db data/Fly.db                  # 2 hours before departure
    python src/check_probabilities.py --db data/Fly.db       # can the percentages be trusted? which alert level?
    python src/prediction_time.py --db data/Fly.db           # 4, 2 and 1 hours before departure
+   python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json for the web page
    python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
    python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
    ```
@@ -275,7 +280,7 @@ For example, if a missed delay costs four times as much as acting (an illustrati
 ## What I'd do next
 
 - Add weather data for each departure airport.
-- Put the model behind a small web API so others can use it.
+- Retrain on recent months, since delays became more common every year.
 
 ## About
 
