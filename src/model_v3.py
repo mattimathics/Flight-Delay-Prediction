@@ -154,11 +154,11 @@ def score(name, y_true, risk):
     return {"model": name, "test_auc": roc_auc_score(y_true, risk), **flag_riskiest(y_true, risk)}
 
 
-def fit_and_score(train, test):
-    """Score the no-model benchmark, then fit and score every setup in SETUPS."""
+def fit_and_score(train, test, setups=SETUPS):
+    """Score the no-model benchmark, then fit and score every setup in setups."""
     results = [score(BENCHMARK, test["Delayed"], test["RoutePastDelayRate"])]
     fitted = {}
-    for name, (build, num, cat) in SETUPS.items():
+    for name, (build, num, cat) in setups.items():
         model = build(num, cat).fit(train[num + cat], train["Delayed"])
         risk = model.predict_proba(test[num + cat])[:, 1]
         results.append(score(name, test["Delayed"], risk))

@@ -31,6 +31,8 @@ def db(tmp_path):
         "TaxiOut": rng.integers(5, 30, n),
         "TaxiIn": rng.integers(2, 15, n),
         "AirTime": rng.integers(30, 280, n),
+        "ArrTime": rng.integers(0, 2400, n),
+        "ActualElapsedTime": rng.integers(40, 300, n),
         "ArrDelay": rng.integers(-20, 90, n).astype(float),
         "TailNum": rng.choice(["N1", "N2", "N3", "N4"], n),
     })
