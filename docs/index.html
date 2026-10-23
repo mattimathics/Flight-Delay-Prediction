@@ -46,7 +46,7 @@
   .chip { font-variant-numeric: tabular-nums; font-size: 0.85rem; padding: 2px 8px; border-radius: 999px;
           background: var(--accent-soft); white-space: nowrap; }
   .bars { display: grid; gap: 8px; margin: 12px 0 4px; }
-  .bar-row { display: grid; grid-template-columns: 120px 1fr 48px; gap: 10px; align-items: center; }
+  .bar-row { display: grid; grid-template-columns: 140px 1fr 48px; gap: 10px; align-items: center; }
   .bar-track { background: var(--line); border-radius: 6px; height: 14px; overflow: hidden; }
   .bar-fill { background: var(--accent); height: 100%; }
   .pct { text-align: right; font-variant-numeric: tabular-nums; }
@@ -61,7 +61,7 @@
   .empty { color: var(--muted); }
   @media (max-width: 560px) {
     h1 { font-size: 1.5rem; }
-    .bar-row { grid-template-columns: 96px 1fr 44px; }
+    .bar-row { grid-template-columns: 112px 1fr 44px; }
     select { min-width: 0; width: 100%; }
     label { width: 100%; }
   }
@@ -94,7 +94,9 @@
       <thead><tr><th>Prediction made</th><th>Score (AUC)</th><th>Riskiest 10% that were late</th></tr></thead>
       <tbody id="summary"></tbody>
     </table>
-    <p class="sub" style="margin-top:12px">AUC measures how well the model ranks late flights above on-time ones:
+    <p class="sub" style="margin-top:12px">Weather means the last hourly report issued at each airport
+      before the 2-hour mark, so it was known in time.</p>
+    <p class="sub">AUC measures how well the model ranks late flights above on-time ones:
       0.5 is a coin flip, 1.0 is perfect. My first model scored 0.996, but it was cheating: it was given each
       flight's own departure delay. Every prediction on this page uses only what was known at the time.</p>
   </section>
@@ -110,6 +112,7 @@ const TIMES = [
   ["risk_weeks", "Weeks ahead"],
   ["risk_4h", "4 hours before"],
   ["risk_2h", "2 hours before"],
+  ["risk_2h_weather", "2 hours + weather"],
   ["risk_1h", "1 hour before"],
 ];
 let data, flights;
@@ -185,13 +188,19 @@ function factsAtTwoHours(f) {
   } else if (f.turnaround_minutes !== null) {
     facts.push("Its previous flight hadn't taken off yet, so its delay wasn't known.");
   }
+  if (f.origin_weather) facts.push(`Weather at ${f.origin}: ${f.origin_weather}.`);
+  if (f.dest_weather) facts.push(`Weather at ${f.dest}: ${f.dest_weather}.`);
+  if (f.risk_2h_weather !== null && f.risk_2h_weather !== undefined && !f.origin_weather && !f.dest_weather) {
+    facts.push("No weather report was available for either airport.");
+  }
   return facts;
 }
 
 function showFlight(f, button) {
   list.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", "false"));
   if (button) button.setAttribute("aria-pressed", "true");
-  const bars = TIMES.map(([field, label]) => `
+  // Older data files have no weather model, so skip any prediction that is missing
+  const bars = TIMES.filter(([field]) => f[field] !== null && f[field] !== undefined).map(([field, label]) => `
     <div class="bar-row"><span>${label}</span>
       <div class="bar-track"><div class="bar-fill" style="width:${percent(f[field])}"></div></div>
       <span class="pct">${percent(f[field])}</span></div>`).join("");

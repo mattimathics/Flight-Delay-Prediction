@@ -280,7 +280,7 @@ Weather is known at the departure airport for 90.6% of test flights, and at the 
    python src/model_v4.py --db data/Fly.db                  # 2 hours before departure
    python src/check_probabilities.py --db data/Fly.db       # can the percentages be trusted? which alert level?
    python src/prediction_time.py --db data/Fly.db           # 4, 2 and 1 hours before departure
-   python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json for the web page
+   python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
    python src/download_weather.py --db data/Fly.db          # about 230 MB into data/weather (needs curl)
    python src/model_weather.py --db data/Fly.db             # 2-hour model with and without weather
    python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
@@ -302,7 +302,6 @@ Weather is known at the departure airport for 90.6% of test flights, and at the 
 
 ## What I'd do next
 
-- Add weather to the web page.
 - Retrain on recent months, since delays became more common every year.
 
 ## About

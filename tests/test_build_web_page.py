@@ -49,3 +49,15 @@ def test_airline_and_airport_names_are_looked_up(db):
     _, _, _, (carriers, airports) = page_data(db)
     assert carriers["AA"] == "American Airlines"
     assert airports["ORD"] == "Chicago, IL"
+
+
+def test_weather_sentence():
+    import numpy as np
+    report = pd.Series({"OriginVisibility": 2.5, "OriginWind": 20.0, "OriginGust": 35.0,
+                        "OriginStorm": 1, "OriginSnow": 0, "OriginFog": 1})
+    assert build_web_page.weather_sentence(report, "Origin") == (
+        "visibility 2.5 miles; wind 20 knots, gusting 35; thunderstorm and fog reported")
+    calm = pd.Series({"OriginVisibility": 10.0, "OriginWind": np.nan, "OriginGust": np.nan,
+                      "OriginStorm": 0, "OriginSnow": 0, "OriginFog": 0})
+    assert build_web_page.weather_sentence(calm, "Origin") == "visibility 10 miles; no thunderstorm, snow or fog"
+    assert build_web_page.weather_sentence(pd.Series({"OriginVisibility": np.nan}), "Origin") is None

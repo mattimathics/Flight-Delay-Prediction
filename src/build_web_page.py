@@ -4,12 +4,13 @@ Save the model's predictions for every 2008 test flight, for the web page in doc
 The web page (docs/index.html) runs no model. It reads docs/flights.json,
 which this script writes: for each Jan-Apr 2008 test flight, its chance of
 delay weeks ahead (timetable only) and 4, 2 and 1 hour before departure,
-what the model knew 2 hours before, and what really happened. The models are
+what the model knew 2 hours before (including the weather, if it has been
+downloaded with src/download_weather.py), and what really happened. The models are
 the same ones as in src/prediction_time.py, trained on 2004-2007 only, so
 every flight on the page is one the model never saw.
 
 Usage:
-    python src/build_web_page.py --db data/Fly.db [--pct 1] [--seed 42]
+    python src/build_web_page.py --db data/Fly.db [--weather data/weather] [--pct 1] [--seed 42]
 """
 
 import argparse
@@ -23,16 +24,19 @@ from sklearn.metrics import roc_auc_score
 import model_v2
 import model_v3
 import model_v4
+import model_weather
 
 ROOT = Path(__file__).resolve().parents[1]
 
 # Short labels the page shows for each prediction time, with the cutoff in minutes
 PREDICTION_TIMES = {"Weeks ahead": None, "4 hours before": 240, "2 hours before": 120, "1 hour before": 60}
 EXPLAIN_AT = 120  # the page explains what the model knew 2 hours before
+WITH_WEATHER = "2 hours before + weather"
 
 COLUMNS = ["date", "carrier", "flight_number", "origin", "dest", "scheduled_departure",
-           "arrival_delay", "late", "risk_weeks", "risk_4h", "risk_2h", "risk_1h",
-           "airport_late_share", "turnaround_minutes", "previous_flight_delay"]
+           "arrival_delay", "late", "risk_weeks", "risk_4h", "risk_2h", "risk_1h", "risk_2h_weather",
+           "airport_late_share", "turnaround_minutes", "previous_flight_delay",
+           "origin_weather", "dest_weather"]
 
 
 def fit_and_predict(num, train, test):
@@ -42,7 +46,7 @@ def fit_and_predict(num, train, test):
     return pd.Series(risk, index=test["FlightId"].values)
 
 
-def predictions_at_each_time(df, db_path):
+def predictions_at_each_time(df, db_path, weather_folder=None):
     """Chance of delay for every test flight at every prediction time, plus the 2-hour facts."""
     risks, facts = {}, None
     for label, cutoff in PREDICTION_TIMES.items():
@@ -53,9 +57,33 @@ def predictions_at_each_time(df, db_path):
         at_cutoff = model_v4.add_same_day_features(df, db_path, cutoff)
         train, test = model_v2.split_by_year(at_cutoff)
         risks[label] = fit_and_predict(model_v4.V4_NUM, train, test)
-        if cutoff == EXPLAIN_AT:
-            facts = test.set_index("FlightId")[model_v4.AIRPORT_EARLIER + model_v4.PLANE_PREVIOUS]
+        if cutoff != EXPLAIN_AT:
+            continue
+        facts = test.set_index("FlightId")[model_v4.AIRPORT_EARLIER + model_v4.PLANE_PREVIOUS]
+        if weather_folder:
+            # The same 2-hour model plus the last weather report before the cutoff (model_weather.py)
+            with_weather = model_weather.add_weather(at_cutoff, weather_folder)
+            train, test = model_v2.split_by_year(with_weather)
+            risks[WITH_WEATHER] = fit_and_predict(model_v4.V4_NUM + model_weather.WEATHER, train, test)
+            facts = facts.join(test.set_index("FlightId")[model_weather.WEATHER])
     return pd.DataFrame(risks), facts
+
+
+def weather_sentence(report, prefix):
+    """One airport's last weather report before the cutoff, in words; None if there wasn't one."""
+    if pd.isna(report.get(prefix + "Visibility")):
+        return None
+    parts = [f"visibility {report[prefix + 'Visibility']:g} miles"]
+    if pd.notna(report[prefix + "Wind"]):
+        wind = f"wind {report[prefix + 'Wind']:g} knots"
+        if pd.notna(report[prefix + "Gust"]):
+            wind += f", gusting {report[prefix + 'Gust']:g}"
+        parts.append(wind)
+    conditions = [name for name in ("Storm", "Snow", "Fog") if report[prefix + name] == 1]
+    words = {"Storm": "thunderstorm", "Snow": "snow", "Fog": "fog"}
+    parts.append(" and ".join(words[c] for c in conditions) + " reported" if conditions
+                 else "no thunderstorm, snow or fog")
+    return "; ".join(parts)
 
 
 def names(db_path):
@@ -95,9 +123,13 @@ def page_rows(test, risks, facts):
         "risk_4h": risks.loc[test.index, "4 hours before"].round(3),
         "risk_2h": risks.loc[test.index, "2 hours before"].round(3),
         "risk_1h": risks.loc[test.index, "1 hour before"].round(3),
+        "risk_2h_weather": (risks.loc[test.index, WITH_WEATHER].round(3)
+                            if WITH_WEATHER in risks else None),
         "airport_late_share": facts.loc[test.index, "AirportLateShareEarlier"].round(3),
         "turnaround_minutes": facts.loc[test.index, "PlaneTurnaroundMinutes"],
         "previous_flight_delay": facts.loc[test.index, "PlanePrevDepDelay"],
+        "origin_weather": [weather_sentence(r, "Origin") for _, r in facts.loc[test.index].iterrows()],
+        "dest_weather": [weather_sentence(r, "Dest") for _, r in facts.loc[test.index].iterrows()],
     }, index=test.index)
     table = table.sort_values(["origin", "date", "scheduled_departure"])
     # JSON has no NaN, so unknown values become null
@@ -108,13 +140,16 @@ def page_rows(test, risks, facts):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default=str(ROOT / "data" / "Fly.db"))
+    ap.add_argument("--weather", default=str(ROOT / "data" / "weather"),
+                    help="folder from download_weather.py; skipped if it doesn't exist")
     ap.add_argument("--pct", type=float, default=1, help="percent of flights to sample (default 1)")
     ap.add_argument("--seed", type=int, default=42, help="sampling seed (default 42); same seed, same sample")
     args = ap.parse_args()
 
+    weather = args.weather if Path(args.weather, "time_zones.json").exists() else None
     df = model_v3.load(args.db, args.pct, args.seed)
     _, test = model_v2.split_by_year(df)
-    risks, facts = predictions_at_each_time(df, args.db)
+    risks, facts = predictions_at_each_time(df, args.db, weather)
     carriers, airports = names(args.db)
 
     rows = page_rows(test, risks, facts)
