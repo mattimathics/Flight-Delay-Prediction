@@ -10,7 +10,12 @@ the same ones as in src/prediction_time.py, trained on 2004-2007 only, so
 every flight on the page is one the model never saw.
 
 Usage:
-    python src/build_web_page.py --db data/Fly.db [--weather data/weather] [--pct 1] [--seed 42]
+    python src/build_web_page.py --db data/Fly.db [--weather data/weather] [--pct 1] [--seed 42] [--show-pct 1]
+
+--pct sets how many flights the models learn from. --show-pct sets how many test
+flights go on the page: a 30% sample has about 700,000 test flights, far too many
+for one file, so the page can show a smaller sample while the headline numbers
+still come from every test flight.
 """
 
 import argparse
@@ -107,6 +112,15 @@ def summary(test, risks):
     return {"flights": len(test), "late_overall": round(test["Delayed"].mean(), 3), "by_time": rows}
 
 
+def flights_to_show(test, show_pct, seed):
+    """The test flights that go on the page: all of them, or the ones in a smaller sample."""
+    if show_pct is None:
+        return test
+    # The same hash as model_v2's sampling, so a 1% page holds exactly the 1% sample's flights
+    keep = [model_v2.in_sample(flight_id, show_pct, seed) == 1 for flight_id in test["FlightId"]]
+    return test[keep]
+
+
 def page_rows(test, risks, facts):
     """One short list per flight, in the order of COLUMNS, to keep the file small."""
     test = test.set_index("FlightId")
@@ -144,6 +158,8 @@ def main():
                     help="folder from download_weather.py; skipped if it doesn't exist")
     ap.add_argument("--pct", type=float, default=1, help="percent of flights to sample (default 1)")
     ap.add_argument("--seed", type=int, default=42, help="sampling seed (default 42); same seed, same sample")
+    ap.add_argument("--show-pct", type=float, default=None,
+                    help="percent of flights to put on the page (default: every test flight)")
     args = ap.parse_args()
 
     weather = args.weather if Path(args.weather, "time_zones.json").exists() else None
@@ -152,7 +168,8 @@ def main():
     risks, facts = predictions_at_each_time(df, args.db, weather)
     carriers, airports = names(args.db)
 
-    rows = page_rows(test, risks, facts)
+    # Headline numbers use every test flight; the flight list may be a smaller sample
+    rows = page_rows(flights_to_show(test, args.show_pct, args.seed), risks, facts)
     used_airports = {code for row in rows for code in (row[3], row[4])}
     used_carriers = {row[1] for row in rows}
     page_data = {
