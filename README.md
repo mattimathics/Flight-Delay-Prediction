@@ -36,7 +36,7 @@ Using the [ASA Data Expo 2009](https://doi.org/10.7910/DVN/HG7NV7) flight data, 
 | Day and season | Friday is the worst day (25.9%) and Saturday the best (18.5%). Winter (25.4%) and summer (25.0%) are the worst seasons, and autumn the best (19.2%). |
 | Plane age | Age makes little difference: planes over 20 years old are late 23.9% of the time, against 22.6% for planes up to 10 years old.† |
 | Number of flights | Flights started falling across the US in December 2007. |
-| Knock-on delays | By following each plane's tail number, I traced how a late arrival makes the same plane's next departure late. |
+| Knock-on delays | By following each plane's tail number to its next flight that day, I found that 27% of late arrivals (2.8 million of 10.3 million) made the next flight leave and arrive late, with the airline blaming the late incoming plane. |
 | Prediction | See the model section below. |
 
 \*These rates group flights by their **scheduled** departure time, the time a passenger sees when booking. My coursework chart grouped them by **actual** departure time instead, which made night look worst (41.5%). That was misleading: an evening flight that runs late and leaves after 9 pm gets counted as a "night" flight, so night collects other slots' delays. The chart at the top shows both groupings side by side.
@@ -254,7 +254,7 @@ Weather is known at the departure airport for 90.7% of test flights, and at the 
 ## What's in this repo
 
 ```
-├── notebooks/flight_delay_analysis.ipynb   # Python analysis (questions 1–5), with outputs
+├── notebooks/flight_delay_analysis.ipynb   # Python analysis (questions 1–5); runs top to bottom in about 30 minutes
 ├── r/flight_delay_analysis.Rmd             # The same analysis in R
 ├── src/model_v2.py                         # The honest model (before-departure information only)
 ├── src/model_v3.py                         # Adds airport busyness, route history, a benchmark and the riskiest-10% check
@@ -280,7 +280,7 @@ Weather is known at the departure airport for 90.7% of test flights, and at the 
 2. Python:
    ```bash
    pip install -r requirements.txt
-   jupyter notebook notebooks/flight_delay_analysis.ipynb   # builds data/Fly.db
+   jupyter notebook notebooks/flight_delay_analysis.ipynb   # builds data/Fly.db (set FLY_DATA_DIR to build it elsewhere)
    python src/model_v2.py --db data/Fly.db                  # same --pct and --seed give the same sample
    python src/model_v3.py --db data/Fly.db                  # stronger features, benchmark and riskiest-10% chart
    python src/model_v4.py --db data/Fly.db                  # 2 hours before departure
