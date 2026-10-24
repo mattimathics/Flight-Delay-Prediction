@@ -1,7 +1,7 @@
 model,test_auc,flagged_flights,late_rate_in_flagged,late_rate_overall,times_the_average,share_of_late_flights_caught,n_train,n_test,pct,seed
-Benchmark: route's past delay rate (no model),0.5889,2336,0.348,0.2553,1.3631,0.1363,282717,23363,1,42
-v3 gradient boosting (timetable only),0.642,2336,0.4431,0.2553,1.7353,0.1735,282717,23363,1,42
-v4 gradient boosting + airport's earlier delays only,0.6894,2336,0.5835,0.2553,2.2853,0.2285,282717,23363,1,42
-v4 gradient boosting + plane's previous flight only,0.7305,2336,0.6592,0.2553,2.5821,0.2582,282717,23363,1,42
-v4 logistic regression (2 hours before),0.6928,2336,0.5925,0.2553,2.3205,0.232,282717,23363,1,42
-v4 gradient boosting (2 hours before),0.7513,2336,0.7213,0.2553,2.8252,0.2825,282717,23363,1,42
+Benchmark: route's past delay rate (no model),0.5889,69530,0.3507,0.2518,1.3924,0.1392,8477419,695298,30.0,42
+v3 gradient boosting (timetable only),0.654,69530,0.4532,0.2518,1.7996,0.18,8477419,695298,30.0,42
+v4 gradient boosting + airport's earlier delays only,0.6979,69530,0.5805,0.2518,2.3049,0.2305,8477419,695298,30.0,42
+v4 gradient boosting + plane's previous flight only,0.7446,69530,0.6851,0.2518,2.7203,0.272,8477419,695298,30.0,42
+v4 logistic regression (2 hours before),0.6914,69530,0.5854,0.2518,2.3244,0.2324,8477419,695298,30.0,42
+v4 gradient boosting (2 hours before),0.7645,69530,0.7348,0.2518,2.9179,0.2918,8477419,695298,30.0,42
