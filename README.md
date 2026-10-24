@@ -12,8 +12,8 @@ I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. Th
 
 - **Data:** 31 million flights, loaded into a SQLite database.
 - **Best time to fly:** the morning. 15.6% of flights scheduled to leave in the morning are late, against 30.9% in the evening.
-- **The model:** the first version scored 0.93–0.98 AUC, which was too good to be true. It used the departure delay to predict the arrival delay. With only the timetable, the honest score is **0.654**, from a model that learned from 8.5 million flights. Predicting 2 hours before departure, using only what has already happened that day, it rises to **0.751** (so far measured on a 1% sample).
-- **What it's good for:** 2 hours out, the 10% of flights the model rates riskiest are late 72% of the time, against 25.5% for all 2008 flights. An airline could send standby crews and spare gates to that list.
+- **The model:** the first version scored 0.93–0.98 AUC, which was too good to be true. It used the departure delay to predict the arrival delay. With only the timetable, the honest score is **0.654**, from a model that learned from 8.5 million flights. Predicting 2 hours before departure, using only what has already happened that day, it rises to **0.765**.
+- **What it's good for:** 2 hours out, the 10% of flights the model rates riskiest are late 73% of the time, against 25.2% for all 2008 flights. An airline could send standby crews and spare gates to that list.
 - **The lesson:** always check *when* each piece of information becomes known.
 
 ![Delay rate by time of day](images/delay_rate_by_time_of_day.png)
@@ -96,7 +96,7 @@ The 2008 data only covers January to April. Each sample is a fixed share of all 
 
 **More data helped gradient boosting a little (0.642 → 0.654) and logistic regression not at all.** Gradient boosting can pick up patterns for rare airports and routes, and more flights give it enough examples of each. Logistic regression gives each airport, airline and hour one fixed weight, and 1% of the data was already enough to set those. (An earlier version of this README said 0.627, 0.641 and 0.997. Those came from a random sample that could not be repeated.)
 
-Steps 4 to 7 below still use the 1% sample, so they compare against the 1% timetable score of 0.642.
+Steps 4 to 8 below use the same 30% sample and the same 695,298 test flights.
 
 ![ROC curves, v2: pre-departure vs leaky features](images/roc_curve_v2.png)
 
@@ -111,22 +111,22 @@ I also compared every model against a simple **benchmark**: no model at all, jus
 
 | Method | Score on 2008 flights (AUC) | Late, among the riskiest 10% | Share of all late flights caught |
 |---|---|---|---|
-| Benchmark: route's past delay rate | 0.589 | 34.8% | 13.6% |
-| v2 gradient boosting | 0.642 | 44.4% | 17.4% |
-| v2 + airport busyness | 0.644 | 44.1% | 17.3% |
-| v2 + route history | 0.641 | 44.1% | 17.3% |
-| v3 gradient boosting (both added) | 0.642 | 44.3% | 17.4% |
-| v3 logistic regression (both added) | 0.633 | 42.1% | 16.5% |
+| Benchmark: route's past delay rate | 0.589 | 35.1% | 13.9% |
+| v2 gradient boosting | 0.654 | 45.3% | 18.0% |
+| v2 + airport busyness | 0.655 | 45.3% | 18.0% |
+| v2 + route history | 0.653 | 45.3% | 18.0% |
+| v3 gradient boosting (both added) | 0.654 | 45.3% | 18.0% |
+| v3 logistic regression (both added) | 0.633 | 42.0% | 16.7% |
 
-Same 1% sample and same 2008 test flights as Step 3. Across all 2008 test flights, 25.5% were late.
+Same 30% sample and same 2008 test flights as Step 3. Across all 2008 test flights, 25.2% were late.
 
 ![Riskiest 10% of flights](images/riskiest_flights_v3.png)
 
 **What this means.**
 
-- **The model beats the benchmark clearly.** Its riskiest 10% of flights are late 44% of the time: 1.7 times the average. Ranking by route history alone gives 35%.
-- **The new features did not help gradient boosting.** It already knows the airport, route, airline and hour, so it had worked out most of this for itself. They did help the simpler logistic regression (0.628 → 0.633).
-- **More data helps a little, not a lot.** With a 5% sample (1,412,072 training flights), gradient boosting scored 0.647 with or without the new features (`python src/model_v3.py --pct 5`).
+- **The model beats the benchmark clearly.** Its riskiest 10% of flights are late 45% of the time: 1.8 times the average. Ranking by route history alone gives 35%.
+- **The new features did not help gradient boosting.** It already knows the airport, route, airline and hour, so it had worked out most of this for itself. They did help the simpler logistic regression (0.629 → 0.633).
+- **More data helps a little, not a lot.** Gradient boosting scored 0.642 on the 1% sample, 0.647 on 5% and 0.654 on 30%.
 - **The timetable alone has a ceiling of about 0.65.** Even 8.5 million training flights only reach 0.654 (Step 3). Most delays come from things that happen on the day, like weather and late incoming planes. Getting past that ceiling means predicting closer to departure, using what has already gone wrong that day.
 
 **Step 5: predicting 2 hours before departure** (`src/model_v4.py`). An airline re-plans crews and gates a couple of hours ahead, and by then it knows more. I moved the prediction to 2 hours before the scheduled departure and added only what is known at that moment:
@@ -139,23 +139,23 @@ This keeps the leakage rule from Step 2: nothing that happens after the 2-hour m
 
 | Method | Score on 2008 flights (AUC) | Late, among the riskiest 10% | Share of all late flights caught |
 |---|---|---|---|
-| Benchmark: route's past delay rate | 0.589 | 34.8% | 13.6% |
-| v3 gradient boosting (timetable only) | 0.642 | 44.3% | 17.4% |
-| + airport's earlier delays only | 0.689 | 58.3% | 22.8% |
-| + plane's previous flight only | 0.731 | 65.9% | 25.8% |
-| v4 logistic regression (2 hours before) | 0.693 | 59.2% | 23.2% |
-| v4 gradient boosting (2 hours before) | **0.751** | **72.1%** | **28.2%** |
+| Benchmark: route's past delay rate | 0.589 | 35.1% | 13.9% |
+| v3 gradient boosting (timetable only) | 0.654 | 45.3% | 18.0% |
+| + airport's earlier delays only | 0.698 | 58.0% | 23.0% |
+| + plane's previous flight only | 0.745 | 68.5% | 27.2% |
+| v4 logistic regression (2 hours before) | 0.691 | 58.5% | 23.2% |
+| v4 gradient boosting (2 hours before) | **0.765** | **73.5%** | **29.2%** |
 
-Same 1% sample and same 2008 test flights as Steps 3 and 4. The airport's earlier delays are known for 84.7% of test flights, the turnaround for 76.8%, and the previous flight's delay for 52.9%. Early-morning flights, for example, have nothing earlier that day to learn from.
+Same 30% sample and same 2008 test flights as Steps 3 and 4. The airport's earlier delays are known for 84.6% of test flights, the turnaround for 77.0%, and the previous flight's delay for 53.2%. On the 1% sample this model scored 0.751, so more data added about 0.014. Early-morning flights, for example, have nothing earlier that day to learn from.
 
 ![Riskiest 10% of flights, 2 hours before departure](images/riskiest_flights_v4.png)
 
 **What this means.**
 
-- **What happened earlier that day matters more than anything in the timetable.** The plane's previous flight alone lifts the score from 0.642 to 0.731.
-- **2 hours out, the riskiest 10% are late 72% of the time**, 2.8 times the average. That list holds 28% of all late flights.
-- **This is still not leakage.** The leaky model scored 0.996 because it was given the flight's own delay. This one only sees other flights, and only what had already happened 2 hours before.
-- **The two models answer different questions.** The timetable model (0.642) works weeks ahead, for planning schedules. The 2-hour model (0.751) works on the day, for operations.
+- **What happened earlier that day matters more than anything in the timetable.** The plane's previous flight alone lifts the score from 0.654 to 0.745.
+- **2 hours out, the riskiest 10% are late 73% of the time**, 2.9 times the average. That list holds 29% of all late flights.
+- **This is still not leakage.** The leaky model scored 0.998 because it was given the flight's own delay. This one only sees other flights, and only what had already happened 2 hours before.
+- **The two models answer different questions.** The timetable model (0.654) works weeks ahead, for planning schedules. The 2-hour model (0.765) works on the day, for operations.
 
 **Step 6: can its percentages be trusted, and when should it raise an alert?** (`src/check_probabilities.py`). A ranking is useful, but an airline acting on "70% chance of delay" needs that 70% to be true. I grouped the 2008 test flights by the 2-hour model's predicted chance and checked how many in each group were really late.
 
@@ -163,32 +163,32 @@ Same 1% sample and same 2008 test flights as Steps 3 and 4. The airport's earlie
 
 | Predicted chance | Flights | Model's average prediction | Really late |
 |---|---|---|---|
-| 0–10% | 5,431 | 7.2% | 9.1% |
-| 10–20% | 8,233 | 14.5% | 16.7% |
-| 20–30% | 3,769 | 24.4% | 26.9% |
-| 30–40% | 2,083 | 34.5% | 34.0% |
-| 40–50% | 1,235 | 44.7% | 44.8% |
-| 50–60% | 914 | 54.7% | 54.4% |
-| 60–70% | 644 | 64.7% | 67.2% |
-| 70–80% | 504 | 74.9% | 77.2% |
-| 80–90% | 356 | 84.8% | 90.2% |
-| 90–100% | 194 | 93.5% | 95.4% |
+| 0–10% | 159,626 | 6.9% | 7.9% |
+| 10–20% | 243,545 | 14.5% | 16.2% |
+| 20–30% | 119,551 | 24.4% | 25.8% |
+| 30–40% | 59,694 | 34.5% | 35.6% |
+| 40–50% | 35,537 | 44.6% | 44.9% |
+| 50–60% | 24,187 | 54.7% | 54.9% |
+| 60–70% | 17,338 | 64.8% | 64.9% |
+| 70–80% | 13,946 | 74.8% | 76.4% |
+| 80–90% | 11,238 | 84.9% | 86.5% |
+| 90–100% | 10,636 | 95.1% | 96.0% |
 
-- **The percentages can be trusted.** On average, a group's prediction is 1.9 points away from what really happened, so no correction is needed.
-- **Where they are off, they run a little low.** The model expects 23.7% of 2008 flights to be late; 25.5% were. Delays became more common every year (20% in 2004, 24.7% in 2007), and a model trained on the past can't know that 2008 would be worse still.
+- **The percentages can be trusted.** On average, a group's prediction is 1.2 points away from what really happened, so no correction is needed.
+- **Where they are off, they run a little low.** The model expects 24.0% of 2008 flights to be late; 25.2% were. Delays became more common every year (20.4% in 2004, 24.8% in 2007), and a model trained on the past can't know that 2008 would be worse still.
 
 **Choosing an alert level.** It is worth acting on a flight when the expected cost of a delay is bigger than the cost of acting: chance of delay × cost of a missed delay > cost of acting. So the alert level is simply **cost of acting ÷ cost of a missed delay**. This only works because the percentages are trustworthy.
 
 | Alert if chance is at least | Flights flagged | Late, among flagged | Share of all late flights caught |
 |---|---|---|---|
-| 20% | 41.5% | 42.3% | 68.7% |
-| 25% | 32.1% | 47.5% | 59.6% |
-| 30% | 25.4% | 52.0% | 51.7% |
-| 40% | 16.5% | 61.8% | 39.9% |
-| 50% | 11.2% | 69.9% | 30.6% |
-| 70% | 4.5% | 84.9% | 15.0% |
+| 20% | 42.0% | 42.2% | 70.3% |
+| 25% | 31.8% | 48.1% | 60.7% |
+| 30% | 24.8% | 53.5% | 52.7% |
+| 40% | 16.2% | 63.0% | 40.6% |
+| 50% | 11.1% | 71.2% | 31.5% |
+| 70% | 5.2% | 85.4% | 17.5% |
 
-For example, if a missed delay costs four times as much as acting (an illustration, not a real airline figure), the alert level is 1 ÷ 4 = 25%. The model would flag about a third of flights and catch 60% of late ones. If acting is expensive, raise the level: at 70%, it flags 4.5% of flights and 85% of them are really late. `--cost-of-acting` and `--cost-of-missed-delay` let you plug in real costs.
+For example, if a missed delay costs four times as much as acting (an illustration, not a real airline figure), the alert level is 1 ÷ 4 = 25%. The model would flag about a third of flights and catch 61% of late ones. If acting is expensive, raise the level: at 70%, it flags 5.2% of flights and 85% of them are really late. `--cost-of-acting` and `--cost-of-missed-delay` let you plug in real costs.
 
 **Step 7: how much does it help to wait?** (`src/prediction_time.py`). I rebuilt the same model with the cutoff at 4 hours, 2 hours and 1 hour before departure. At each cutoff it sees only what had happened by then, so later cutoffs know more.
 
@@ -196,15 +196,15 @@ For example, if a missed delay costs four times as much as acting (an illustrati
 
 | Prediction made | Score on 2008 flights (AUC) | Late, among the riskiest 10% | Share of all late flights caught | Plane's previous take-off known |
 |---|---|---|---|---|
-| Weeks ahead (timetable only) | 0.642 | 44.3% | 17.4% | – |
-| 4 hours before | 0.693 | 58.4% | 22.9% | 12.5% of flights |
-| 2 hours before | 0.751 | 72.1% | 28.2% | 52.9% |
-| 1 hour before | 0.795 | 85.6% | 33.5% | 73.7% |
-| After take-off (leaky) | 0.996 | 100% | 39.2% | – |
+| Weeks ahead (timetable only) | 0.654 | 45.3% | 18.0% | – |
+| 4 hours before | 0.707 | 59.4% | 23.6% | 12.6% of flights |
+| 2 hours before | 0.765 | 73.5% | 29.2% | 53.2% |
+| 1 hour before | 0.807 | 86.2% | 34.2% | 74.1% |
+| After take-off (leaky) | 0.998 | 100% | 39.7% | – |
 
-- **Every hour closer adds accuracy**, mostly because more incoming planes have already taken off. At 4 hours, 12.5% of flights have that information. At 1 hour, 73.7% do.
+- **Every hour closer adds accuracy**, mostly because more incoming planes have already taken off. At 4 hours, 12.6% of flights have that information. At 1 hour, 74.1% do.
 - **This is the trade-off an airline faces:** wait longer and the warning is more accurate, but there is less time to act on it. 1 hour out, 86% of flagged flights are late, but there may be no spare crew left to call.
-- **Even 1 hour out, the honest model (0.795) is far from the leaky one (0.996).** That gap is what the leaky model was getting by being told the answer.
+- **Even 1 hour out, the honest model (0.807) is far from the leaky one (0.998).** That gap is what the leaky model was getting by being told the answer.
 
 **Step 8: adding the weather** (`src/download_weather.py`, `src/model_weather.py`). I downloaded the hourly weather reports that US airports publish, for 2004 to April 2008, from the [Iowa Environmental Mesonet](https://mesonet.agron.iastate.edu/request/download.phtml) (Iowa State University). That covers 96 of the 100 busiest airports (232 MB); the other four aren't in the archive. For each flight, the model sees the **last report issued before the 2-hour mark** at both the departure and arrival airports:
 
@@ -215,14 +215,14 @@ A report more than 3 hours old is treated as unknown. All times are converted to
 
 | Method | Score on 2008 flights (AUC) | Late, among the riskiest 10% | Share of all late flights caught |
 |---|---|---|---|
-| Timetable only (weeks ahead) | 0.642 | 44.3% | 17.4% |
-| Timetable + weather, 2 hours before | 0.704 | 60.4% | 23.7% |
-| 2 hours before | 0.751 | 72.1% | 28.2% |
-| 2 hours before + weather | **0.780** | **76.0%** | **29.8%** |
+| Timetable only (weeks ahead) | 0.654 | 45.3% | 18.0% |
+| Timetable + weather, 2 hours before | 0.717 | 62.3% | 24.7% |
+| 2 hours before | 0.765 | 73.5% | 29.2% |
+| 2 hours before + weather | **0.793** | **77.7%** | **30.9%** |
 
-Weather is known at the departure airport for 90.6% of test flights, and at the arrival airport for 88.3%.
+Weather is known at the departure airport for 90.7% of test flights, and at the arrival airport for 88.2%.
 
-- **Weather helps, and it helps most when little else is known.** Adding only the weather to the timetable features lifts the score from 0.642 to 0.704, but adding it to the full 2-hour model only lifts it from 0.751 to 0.780. Note that the 0.704 model is a 2-hour prediction too: weather on the day isn't known weeks ahead, so it doesn't improve the weeks-ahead model. The airport's earlier delays already reflect a bad-weather day, so some of the information was already there.
+- **Weather helps, and it helps most when little else is known.** Adding only the weather to the timetable features lifts the score from 0.654 to 0.717, but adding it to the full 2-hour model only lifts it from 0.765 to 0.793. Note that the 0.717 model is a 2-hour prediction too: weather on the day isn't known weeks ahead, so it doesn't improve the weeks-ahead model. The airport's earlier delays already reflect a bad-weather day, so some of the information was already there.
 - **The arrival airport matters too.** A storm at the destination delays the arrival even if the departure is on time.
 
 ## Terms used
@@ -241,8 +241,8 @@ Weather is known at the departure airport for 90.6% of test flights, and at the 
 - **Delay rates, not counts.** Busy times naturally have more delays, so every comparison uses the *share* of flights that were late.
 - **The FAA definition of late:** 15+ minutes after schedule.
 - **Test on a later year.** A random split would let the model learn from days it is later tested on. Training on 2004–2007 and testing on 2008 avoids that.
-- **Always compare against a benchmark.** A score of 0.64 means little on its own. Beating the route's past delay rate (0.589) shows the model learned something history alone doesn't give you.
-- **Report a result in business terms.** "The riskiest 10% are late 44% of the time" is something an operations manager can act on. An AUC is not.
+- **Always compare against a benchmark.** A score of 0.65 means little on its own. Beating the route's past delay rate (0.589) shows the model learned something history alone doesn't give you.
+- **Report a result in business terms.** "The riskiest 10% are late 73% of the time" is something an operations manager can act on. An AUC is not.
 - **Repeatable samples.** The model always picks the same sample of flights for a given setting, so anyone rerunning it gets the same numbers.
 
 ## Tools
@@ -261,7 +261,7 @@ Weather is known at the departure airport for 90.6% of test flights, and at the 
 ├── src/model_v4.py                         # Predicts 2 hours before departure, using delays already known that day
 ├── src/check_probabilities.py              # Checks the 2-hour model's percentages and picks an alert level from costs
 ├── src/prediction_time.py                  # Same model at 4, 2 and 1 hours before departure
-├── src/build_web_page.py                   # Saves every 2008 test flight's predictions for the web page
+├── src/build_web_page.py                   # Saves 2008 test flights' predictions for the web page
 ├── src/download_weather.py                 # Downloads hourly airport weather (2004–Apr 2008) for the busiest airports
 ├── src/model_weather.py                    # Adds the last weather report before the 2-hour mark
 ├── docs/                                   # The web page (index.html) and its data (flights.json)
@@ -292,6 +292,7 @@ Weather is known at the departure airport for 90.6% of test flights, and at the 
    python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
    python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
    ```
+   Every script uses a 1% sample by default, which runs in minutes. The README's numbers come from `--pct 30` (8.5 million training flights), which takes several hours for the 2-hour scripts and needs about 15 GB of memory. The web page was built with `--pct 30 --show-pct 1`: models trained on 30%, with 1% of the test flights listed so the file stays small.
 3. R: open `r/flight_delay_analysis.Rmd` in RStudio and knit.
 4. Tests (no data needed, as they build a tiny fake database):
    ```bash

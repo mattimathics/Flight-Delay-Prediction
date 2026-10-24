@@ -61,3 +61,13 @@ def test_weather_sentence():
                       "OriginStorm": 0, "OriginSnow": 0, "OriginFog": 0})
     assert build_web_page.weather_sentence(calm, "Origin") == "visibility 10 miles; no thunderstorm, snow or fog"
     assert build_web_page.weather_sentence(pd.Series({"OriginVisibility": np.nan}), "Origin") is None
+
+
+def test_page_can_show_a_smaller_sample_of_the_same_flights(db):
+    df = model_v3.load(db, pct=100, seed=42)
+    _, test = model_v2.split_by_year(df)
+    shown = build_web_page.flights_to_show(test, show_pct=20, seed=42)
+    assert 0 < len(shown) < len(test)
+    # Exactly the flights a 20% sample would have picked
+    assert set(shown["FlightId"]) == set(test["FlightId"]) & set(model_v3.load(db, pct=20, seed=42)["FlightId"])
+    assert build_web_page.flights_to_show(test, None, 42) is test
