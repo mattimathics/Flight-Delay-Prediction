@@ -79,13 +79,13 @@ def alert_level(cost_of_acting, cost_of_missed_delay):
     return cost_of_acting / cost_of_missed_delay
 
 
-def plot_calibration(table, ax=None):
+def plot_calibration(table, ax=None, label="2-hours-before model"):
     """Predicted chance vs share really late; a trustworthy model sits on the diagonal."""
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 6))
     ax.plot([0, 100], [0, 100], color="#9aa0a6", linestyle="--", lw=1, label="Perfectly trustworthy")
     ax.plot(table["predicted"] * 100, table["actually_late"] * 100, marker="o", color="#1f5fa8",
-            label="2-hours-before model")
+            label=label)
     ax.set_xlabel("Model's predicted chance of delay (%)")
     ax.set_ylabel("Share of those flights really late (%)")
     ax.set_title("Can the model's percentages be trusted?\n(test set: Jan-Apr 2008)")
