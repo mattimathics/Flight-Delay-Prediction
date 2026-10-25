@@ -262,6 +262,7 @@ These are the weak spots I know about, and what each one means for the results.
 - **Test on a later year.** A random split would let the model learn from days it is later tested on. Training on 2004–2007 and testing on 2008 avoids that.
 - **Always compare against a benchmark.** A score of 0.65 means little on its own. Beating the route's past delay rate (0.589) shows the model learned something history alone doesn't give you.
 - **Report a result in business terms.** "The riskiest 10% are late 73% of the time" is something an operations manager can act on. An AUC is not.
+- **Airports as categories, not as past delay rates.** scikit-learn's gradient boosting takes at most 255 categories per column, so the 254 busiest airports keep their own label and the other ~60 share one "other" group. Those small airports carry only 0.26% of training flights. I tried the alternative, called target encoding: replace each airport with the share of its 2004–2007 flights that were late (training years only, so 2008 never feeds in). On the 30% sample it scored slightly *worse*: 0.648 vs 0.654 for the timetable model, and 0.761 vs 0.765 for the 2-hour model. On the 1% sample it had scored slightly better, which is why I tested at full size before switching. With enough flights, the model learns how each airport behaves at different hours, months and airlines; one average rate per airport throws that away. So I kept the categories (`src/airport_encoding.py`, `results/airport_encoding.csv`).
 - **Repeatable samples.** The model always picks the same sample of flights for a given setting, so anyone rerunning it gets the same numbers.
 
 ## Tools
@@ -283,6 +284,7 @@ These are the weak spots I know about, and what each one means for the results.
 ├── src/build_web_page.py                   # Saves 2008 test flights' predictions for the web page
 ├── src/download_weather.py                 # Downloads hourly airport weather (2004–Apr 2008) for the busiest airports
 ├── src/model_weather.py                    # Adds the last weather report before the 2-hour mark
+├── src/airport_encoding.py                 # Airports as categories vs as past delay rates (kept categories)
 ├── docs/                                   # The web page (index.html) and its data (flights.json)
 ├── src/time_of_day.py                      # Delay rate by scheduled vs actual departure time (the top chart)
 ├── src/findings.py                         # Delay rate by day, season and plane age (writes results/)
@@ -308,6 +310,7 @@ These are the weak spots I know about, and what each one means for the results.
    python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
    python src/download_weather.py --db data/Fly.db          # about 230 MB into data/weather (needs curl)
    python src/model_weather.py --db data/Fly.db             # 2-hour model with and without weather
+   python src/airport_encoding.py --db data/Fly.db          # airports as categories vs past delay rates
    python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
    python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
    ```

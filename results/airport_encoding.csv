@@ -1,0 +1,6 @@
+model,test_auc,flagged_flights,late_rate_in_flagged,late_rate_overall,times_the_average,share_of_late_flights_caught,n_train,n_test,pct,seed
+Benchmark: route's past delay rate (no model),0.5889,69530,0.3507,0.2518,1.3924,0.1392,8477419,695298,30.0,42
+Timetable only: airports as categories (current),0.654,69530,0.4532,0.2518,1.7996,0.18,8477419,695298,30.0,42
+Timetable only: airports as past delay rates,0.6477,69530,0.4444,0.2518,1.7645,0.1765,8477419,695298,30.0,42
+2 hours before: airports as categories (current),0.7645,69530,0.7348,0.2518,2.9179,0.2918,8477419,695298,30.0,42
+2 hours before: airports as past delay rates,0.7606,69530,0.729,0.2518,2.8949,0.2895,8477419,695298,30.0,42
