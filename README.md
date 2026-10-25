@@ -126,7 +126,7 @@ Same 30% sample and same 2008 test flights as Step 3. Across all 2008 test fligh
 
 - **The model beats the benchmark clearly.** Its riskiest 10% of flights are late 45% of the time: 1.8 times the average. Ranking by route history alone gives 35%.
 - **The new features did not help gradient boosting.** It already knows the airport, route, airline and hour, so it had worked out most of this for itself. They did help the simpler logistic regression (0.629 → 0.633).
-- **More data helps a little, not a lot.** Gradient boosting scored 0.642 on the 1% sample, 0.647 on 5% and 0.654 on 30%.
+- **More data helps a little, not a lot.** Gradient boosting scored 0.642 on the 1% sample, 0.650 on 10% and 0.654 on 30%.
 - **The timetable alone has a ceiling of about 0.65.** Even 8.5 million training flights only reach 0.654 (Step 3). Most delays come from things that happen on the day, like weather and late incoming planes. Getting past that ceiling means predicting closer to departure, using what has already gone wrong that day.
 
 **Step 5: predicting 2 hours before departure** (`src/model_v4.py`). An airline re-plans crews and gates a couple of hours ahead, and by then it knows more. I moved the prediction to 2 hours before the scheduled departure and added only what is known at that moment:

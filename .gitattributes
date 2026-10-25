@@ -1,0 +1,2 @@
+# Count the notebook as documentation, so GitHub labels the repo by the language the models are written in (Python).
+*.ipynb linguist-documentation
