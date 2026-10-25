@@ -322,14 +322,14 @@ AgeAbnormalities <- dbGetQuery(conn, "SELECT flightdetails.TailNum, planes.year,
 print(AgeAbnormalities)
 ```
 
-Categorize planes based on their age
+Categorize planes based on their age. Ages below 0 or above 60 years come from missing or impossible build years (such as 0), so they are left out, as in `src/findings.py`.
 ```{r}
 dbExecute(conn, "ALTER TABLE flightdetails ADD COLUMN AgeCategory")
 dbExecute(conn, "UPDATE flightdetails
                  SET AgeCategory = CASE 
-                                        WHEN AgeOfPlane IS NULL THEN NULL
-                                        WHEN AgeOfPlane BETWEEN -5 AND 10 THEN 'New Aircraft'
-                                        WHEN AgeOfPlane BETWEEN 10 AND 20 THEN 'Standard Aircraft'
+                                        WHEN AgeOfPlane IS NULL OR AgeOfPlane < 0 OR AgeOfPlane > 60 THEN NULL
+                                        WHEN AgeOfPlane <= 10 THEN 'New Aircraft'
+                                        WHEN AgeOfPlane <= 20 THEN 'Standard Aircraft'
                                         ELSE 'Old Aircraft' 
                                     END")
 ```
@@ -349,7 +349,7 @@ ggplot(Q2_AgeOfPlane, aes(x = factor(Age_Category, levels = c("New Aircraft", "S
   geom_bar(stat = "identity") +
   scale_y_continuous(labels = percent_format()) +
   scale_fill_manual(values = c("New Aircraft" = "#00798c", "Standard Aircraft" = "#00798c", "Old Aircraft" = "#003f5c")) +
-  labs(title = "Percentage of Flights Delayed by Age Category",subtitles = "Older planes have the highest percentage of flights delayed",x = "Age Categories", y = "Percentage") +
+  labs(title = "Percentage of Flights Delayed by Age Category", subtitle = "The gap between age groups is small", x = "Age Category", y = "Percentage") +
   geom_text(vjust = -0.5, size = 4, family = "Times New Roman") +
   theme_minimal(base_size = 13) +
   theme(axis.title = element_text(), text = element_text("Times New Roman")) +
@@ -541,7 +541,7 @@ Plot frequency of outbound flights over months
 ```{r}
 ggplot(Q3_MonthlyFrequencyOfOutboundByState, aes(x = Month, y = Frequency, fill = reorder(state, Frequency), group = reorder(state, Frequency))) +
   geom_area(outline.type = "full") +
-  labs(title = "Monthly Frequency of Outbound Interstate Flights", subtitle = "TX, CA, IL, FL and GA have the most inbound interstate flights over the years", x = "Time", y = "Frequency (Thousand)") +
+  labs(title = "Monthly Frequency of Outbound Interstate Flights", subtitle = "Outbound interstate flights by state of departure", x = "Time", y = "Frequency (Thousand)") +
   scale_fill_manual(values = c("#985fbc", "#b6a729", "#dc7bd4", "#5e9222", "#dc79ed", "#87ba4b", "#ac54d1", "#ea971a", "#9f6edd", "#b6601e", "#7a57d5", "#d48d29", "#9b75f6", "#e13e46", "#d942d5", "#b8499b", "#e32bae", "#dd59c2", "#da5261", "#37a029", "#de4198", "#90b824", "#e16fbc", "#e08f47", "#458bf6", "#d85f2d", "#6d7ddb", "#da6344", "#4372de", "#e5342d", "#8575db", "#54c227", "#b354c0", "#9dac45", "#8051f0", "#4e9e42", "#c186e6", "#e1651b", "#4071f3", "#db5a53", "#6865f0", "#35ba72", "#bf43ec", "#6e7f15", "#e1447e", "#52c54c", "#ea2c68", "#47c25e", "#6b71e5", "#a9681c", "#a558e6", "#f04514")) +
   scale_y_continuous(labels = unit_format(unit = "", scale = 1e-3)) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1), text = element_text("Times New Roman"), plot.title = element_text(size = 15)) +
@@ -598,53 +598,54 @@ for (year in names(map_data_list)) {
 
 # ---Q4. detecting cascading delays (arr delay in B -> dep delay in B -> arr delay in C)---
 
-Calculating cascading delays based on delays caused by the same plane
+A cascading delay is a late arrival that makes the same plane's *next* flight leave late. The coursework version matched a late flight with *every* later flight of that plane on the same day, so one late arrival could be counted several times. This version only looks at the next flight, using `LEAD()` (the following row in time order), and leaves out cancelled flights and placeholder tail numbers. It is the same query as Q4 in the Python notebook, which found 2,810,753 cascading delays among 10,301,409 late arrivals whose plane flew on that day (27.3%).
 ```{r}
-Q4_FrequencyOfCascadingDelays <- dbGetQuery(conn, "SELECT COUNT(*) AS TotalCascadingDelays
-                                                    FROM flightdetails AS f1
-                                                    JOIN flightdetails AS f2 ON f1.TailNum = f2.TailNum
-                                                      AND f1.CurrentDate = f2.CurrentDate
-                                                      AND f1.Dest = f2.Origin
-                                                      AND f1.CRSArrTime < f2.CRSDepTime
-                                                      AND f1.ArrDelay > 0
-                                                      AND f2.DepDelay > 0
-                                                      AND f2.ArrDelay > 0
-                                                      AND f2.LateAirCraftDelay > 0")
+dbExecute(conn, "CREATE INDEX IF NOT EXISTS idx_plane_day ON flightdetails (TailNum, CurrentDate, CRSDepTime)")
 
-head(Q4_FrequencyOfCascadingDelays)
+next_leg <- "
+WITH legs AS (
+    SELECT TailNum, CurrentDate, Origin, Dest, CRSArrTime, ArrDelay,
+           LEAD(Origin) OVER plane_day AS NextOrigin,
+           LEAD(CRSDepTime) OVER plane_day AS NextCRSDepTime,
+           LEAD(DepDelay) OVER plane_day AS NextDepDelay,
+           LEAD(ArrDelay) OVER plane_day AS NextArrDelay,
+           LEAD(LateAircraftDelay) OVER plane_day AS NextLateAircraftDelay
+    FROM flightdetails
+    WHERE Cancelled = 0 AND TailNum NOT IN ('0', '000000', 'UNKNOW', 'NA', '')
+    WINDOW plane_day AS (PARTITION BY TailNum, CurrentDate ORDER BY CRSDepTime)
+),
+cascades AS (
+    SELECT * FROM legs
+    WHERE Dest = NextOrigin AND ArrDelay > 0 AND NextDepDelay > 0
+      AND NextArrDelay > 0 AND NextLateAircraftDelay > 0
+)"
+
+Q4_FrequencyOfCascadingDelays <- dbGetQuery(conn, paste(next_leg, "
+SELECT (SELECT COUNT(*) FROM legs WHERE ArrDelay > 0 AND Dest = NextOrigin) AS LateArrivalsWithANextFlight,
+       COUNT(*) AS CascadingDelays
+FROM cascades"))
+Q4_FrequencyOfCascadingDelays$ShareThatCascaded <- Q4_FrequencyOfCascadingDelays$CascadingDelays /
+  Q4_FrequencyOfCascadingDelays$LateArrivalsWithANextFlight
+
+Q4_FrequencyOfCascadingDelays
 ```
 
-Returning entries of cascading delays
+A few examples, to check the matches look right
 ```{r}
-Q4_EntriesOfCascadingDelays <- dbGetQuery(conn, "SELECT f1.TailNum AS TailNum1, f1.TailNum AS TailNum2, 
-                                                      f1.CurrentDate AS Date1, f2.CurrentDate AS Date2,
-                                                      f1.Origin AS Origin1, f1.Dest AS Dest1,
-                                                      f2.Origin AS Origin2, f2.Dest AS Dest2,
-                                                      f1.CRSArrTime AS S_ArrTime1, f1.ArrTime AS A_ArrTime1, 
-                                                      f2.CRSDepTime AS S_DepTime1, f2.DepTime AS A_DepTime1, 
-                                                      f2.CRSArrTime AS S_ArrTime2, f2.ArrTime AS A_ArrTime2,
-                                                      f1.ArrDelay AS ArrDelay1, f2.DepDelay AS DepDelay1, f2.ArrDelay AS ArrDelay2,
-                                                      f2.CarrierDelay AS C_Delay2, f2.NASDelay AS NAS_Delay2, f2.LateAircraftDelay AS LA_Delay2,
-                                                      f2.WeatherDelay AS W_Delay, f2.SecurityDelay AS D_Delay
-                                                    FROM flightdetails AS f1
-                                                    JOIN flightdetails AS f2 ON f1.TailNum = f2.TailNum
-                                                      AND f1.CurrentDate = f2.CurrentDate
-                                                      AND f1.Dest = f2.Origin
-                                                      AND f1.CRSArrTime < f2.CRSDepTime
-                                                      AND f1.ArrDelay > 0
-                                                      AND f2.DepDelay > 0
-                                                      AND f2.ArrDelay > 0
-                                                      AND f2.LateAircraftDelay > 0
-                                                    ORDER BY strftime('%Y-%m', substr(f1.CurrentDate, 7, 4) || '-' || substr(f1.CurrentDate, 4, 2) || '-' || substr(f1.CurrentDate, 1, 2))")
+Q4_EntriesOfCascadingDelays <- dbGetQuery(conn, paste(next_leg, "
+SELECT TailNum, CurrentDate, Origin, Dest, CRSArrTime, ArrDelay,
+       NextCRSDepTime, NextDepDelay, NextArrDelay, NextLateAircraftDelay
+FROM cascades
+LIMIT 5"))
 
-head(Q4_EntriesOfCascadingDelays)
+Q4_EntriesOfCascadingDelays
 ```
 
 # ---Q5. Coursework model (contains target leakage)---
 
 **Read this first.** The models in this section use DepTime, DepDelay, AirTime, TaxiIn and TaxiOut. These are only known after the plane has left (or landed), and departure delay almost decides whether the arrival is 15+ minutes late. That is target leakage, and it is why every model here scores an AUC of about 0.93. The scores do not show how well a delay can be predicted in advance.
 
-The leakage-free version is `src/model_v2.py`: pre-departure features only, trained on 2004-2007 and tested on 2008. See the "Modelling" section of the repo README for its results. This section is kept unchanged as the original coursework.
+The leakage-free version is `src/model_v2.py`: pre-departure features only, trained on 2004-2007 and tested on 2008. See "The model, and the mistake I found" in the repo README for its results. This section is kept unchanged as the original coursework.
 
 Building machine learning model to detect delays
 

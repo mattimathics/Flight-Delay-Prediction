@@ -225,6 +225,25 @@ Weather is known at the departure airport for 90.7% of test flights, and at the 
 - **Weather helps, and it helps most when little else is known.** Adding only the weather to the timetable features lifts the score from 0.654 to 0.717, but adding it to the full 2-hour model only lifts it from 0.765 to 0.793. Note that the 0.717 model is a 2-hour prediction too: weather on the day isn't known weeks ahead, so it doesn't improve the weeks-ahead model. The airport's earlier delays already reflect a bad-weather day, so some of the information was already there.
 - **The arrival airport matters too.** A storm at the destination delays the arrival even if the departure is on time.
 
+## How an airline could use it
+
+- **Weeks ahead (timetable only, AUC 0.654):** spot the scheduled flights that are late most often and give them more slack, such as a longer turnaround or a different departure hour. Its riskiest 10% are late 45% of the time, against 25.2% overall.
+- **On the day (2 hours before, AUC 0.765, or 0.793 with weather):** each morning, flag the 10% of flights most likely to be late. They are late 73.5% of the time, so standby crews, spare gates and rebooking staff can go where they are most likely to be needed.
+- **Choosing how many to flag:** the percentages can be trusted (Step 6), so the alert level can be set from what acting and missing a delay each cost. With made-up costs of 1 and 4, that means flagging flights with a 25% chance or more.
+
+## Limitations
+
+These are the weak spots I know about, and what each one means for the results.
+
+- **The data is old.** It runs from 2004 to April 2008. Airlines, routes and schedules have changed since, so the exact numbers won't carry over to today without retraining.
+- **The test covers only January to April 2008**, because that is where the data ends. The models were never tested on summer, when thunderstorms cause many delays.
+- **Only flights that arrived are counted.** Cancelled and diverted flights have no arrival delay, so the models can't predict them.
+- **Weather covers 96 of the 100 busiest airports.** About 9% of test flights have no weather report for their departure airport, and about 12% have none for their arrival airport.
+- **A quarter of flights have no plane age**, because the plane is missing from the plane data or its build year is blank.
+- **Comparisons are not causes.** Older planes and evening flights being late more often doesn't show that age or time of day causes the delay. Other things, like the airline or the route, may explain it.
+- **The costs in Step 6 are made up** to show the method. A real airline would plug in its own.
+- **The models learn from a 30% sample (8.5 million flights)**, the most my laptop's memory could hold. Going from 10% to 30% added only 0.004, so all the data would probably add very little.
+
 ## Terms used
 
 - **AUC:** how well a model ranks late flights above on-time ones. 0.5 is a coin flip and 1.0 is perfect.
@@ -309,7 +328,9 @@ Weather is known at the departure airport for 90.7% of test flights, and at the 
 
 ## What I'd do next
 
-- Retrain on recent months, since delays became more common every year.
+- Retrain and test on recent data, including summer months, since delays became more common every year and the test only covers winter and spring.
+- Predict cancellations too, not just late arrivals.
+- Check which features drive each prediction, so an operations team can see *why* a flight was flagged.
 
 ## About
 
