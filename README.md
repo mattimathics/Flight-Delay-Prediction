@@ -225,6 +225,44 @@ Weather is known at the departure airport for 90.7% of test flights, and at the 
 - **Weather helps, and it helps most when little else is known.** Adding only the weather to the timetable features lifts the score from 0.654 to 0.717, but adding it to the full 2-hour model only lifts it from 0.765 to 0.793. Note that the 0.717 model is a 2-hour prediction too: weather on the day isn't known weeks ahead, so it doesn't improve the weeks-ahead model. The airport's earlier delays already reflect a bad-weather day, so some of the information was already there.
 - **The arrival airport matters too.** A storm at the destination delays the arrival even if the departure is on time.
 
+## How useful is it in practice?
+
+AUC is hard to act on, so this section asks what an airline would actually get from the **timetable model** (v2 gradient boosting, AUC 0.654), the one that can be used weeks ahead. Same 30% sample and the same 695,298 test flights from January to April 2008 (`src/practical_value.py`).
+
+**Worked example: if an airline flagged the riskiest 10% of flights, it would catch 18.0% of all late flights.** 45.3% of the flagged flights would really be late, against 25.2% of all flights, so the list is 1.8 times better than picking flights at random. Flag more and you catch more delays, but the list gets less accurate:
+
+| Flag the riskiest | Flights flagged | Late, among flagged | Share of all late flights caught |
+|---|---|---|---|
+| 5% | 34,765 | 49.0% | 9.7% |
+| 10% | 69,530 | 45.3% | 18.0% |
+| 20% | 139,060 | 40.7% | 32.3% |
+| 30% | 208,589 | 37.6% | 44.8% |
+| 50% | 347,649 | 33.4% | 66.2% |
+
+The **precision-recall curve** draws that whole trade-off. Moving right, the airline flags more flights and catches more of the late ones (**recall**). Moving down, more of the flagged flights turn out to be on time (lower **precision**). The dashed line is what picking flights at random would give. Its **average precision** (the area under the curve) is 0.378, against 0.252 for random picks.
+
+![Precision-recall curve, timetable model](images/precision_recall_v2.png)
+
+**Can its percentages be trusted?** I grouped the test flights by the model's predicted chance of delay, the same check as Step 6:
+
+![Predicted chance vs reality, timetable model](images/calibration_v2.png)
+
+| Predicted chance | Flights | Model's average prediction | Really late |
+|---|---|---|---|
+| 0–10% | 67,930 | 7.1% | 8.4% |
+| 10–20% | 245,336 | 15.4% | 18.5% |
+| 20–30% | 231,747 | 24.5% | 27.5% |
+| 30–40% | 102,459 | 34.2% | 36.6% |
+| 40–50% | 36,640 | 44.1% | 45.9% |
+| 50–60% | 9,664 | 53.8% | 52.3% |
+| 60–70% | 1,486 | 62.9% | 59.4% |
+| 70–80% | 36 | 71.3% | 55.6% |
+
+- **Roughly, yes, but it runs low.** On average a group's prediction is 2.7 points away from reality, against 1.2 for the 2-hour model. It expects 22.6% of 2008 flights to be late; 25.2% were. As in Step 6, delays rose every year, and a model trained on 2004–2007 can't know that 2008 would be worse.
+- **It is almost never confident.** 98.4% of flights get a chance below 50%, and only 36 get more than 70%, too few to judge (which is why the last dot drops). The timetable can say "riskier than usual", but not "this flight will be late".
+
+**So what.** The timetable model is good for *planning*, not for *acting on single flights*: it can point a scheduler at the 10% of timetable slots that deserve more slack, but that list holds under a fifth of all delays. For on-the-day decisions, the 2-hour model's riskiest 10% catch 29.2% of late flights, with 73.5% of them really late (Step 5).
+
 ## How an airline could use it
 
 - **Weeks ahead (timetable only, AUC 0.654):** spot the scheduled flights that are late most often and give them more slack, such as a longer turnaround or a different departure hour. Its riskiest 10% are late 45% of the time, against 25.2% overall.
@@ -252,6 +290,9 @@ These are the weak spots I know about, and what each one means for the results.
 - **Calibration:** whether a model's percentages match reality. If it says 30% for a group of flights, about 30% should be late.
 - **Cutoff:** the moment the prediction is made. Anything that happens after it can't be used.
 - **Time-based split:** training on earlier years and testing on a later year, so the model never sees the future.
+- **Precision:** of the flights the model flags, the share that really are late.
+- **Recall:** of all the late flights, the share the model flags.
+- **Precision-recall curve:** precision against recall for every possible length of the flagged list, from flagging one flight to flagging all of them.
 - **Benchmark:** the simplest sensible way to do the job without a model. Here, ranking flights by how often their route was late in the past.
 
 ## Key choices, and why
@@ -280,6 +321,7 @@ These are the weak spots I know about, and what each one means for the results.
 ├── src/model_v3.py                         # Adds airport busyness, route history, a benchmark and the riskiest-10% check
 ├── src/model_v4.py                         # Predicts 2 hours before departure, using delays already known that day
 ├── src/check_probabilities.py              # Checks the 2-hour model's percentages and picks an alert level from costs
+├── src/practical_value.py                  # Timetable model in practice: riskiest-10% example, precision-recall and calibration
 ├── src/prediction_time.py                  # Same model at 4, 2 and 1 hours before departure
 ├── src/build_web_page.py                   # Saves 2008 test flights' predictions for the web page
 ├── src/download_weather.py                 # Downloads hourly airport weather (2004–Apr 2008) for the busiest airports
@@ -306,6 +348,7 @@ These are the weak spots I know about, and what each one means for the results.
    python src/model_v3.py --db data/Fly.db                  # stronger features, benchmark and riskiest-10% chart
    python src/model_v4.py --db data/Fly.db                  # 2 hours before departure
    python src/check_probabilities.py --db data/Fly.db       # can the percentages be trusted? which alert level?
+   python src/practical_value.py --db data/Fly.db           # timetable model: riskiest 10%, precision-recall, calibration
    python src/prediction_time.py --db data/Fly.db           # 4, 2 and 1 hours before departure
    python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
    python src/download_weather.py --db data/Fly.db          # about 230 MB into data/weather (needs curl)
