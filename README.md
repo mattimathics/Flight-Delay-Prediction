@@ -263,6 +263,32 @@ The **precision-recall curve** draws that whole trade-off. Moving right, the air
 
 **So what.** The timetable model is good for *planning*, not for *acting on single flights*: it can point a scheduler at the 10% of timetable slots that deserve more slack, but that list holds under a fifth of all delays. For on-the-day decisions, the 2-hour model's riskiest 10% catch 29.2% of late flights, with 73.5% of them really late (Step 5).
 
+## What drives the predictions?
+
+To see which information the timetable model leans on, I used **permutation importance** (`src/what_drives_delays.py`): shuffle one column across the 2008 test flights, so it no longer matches its flight, and measure how much the AUC drops. A big drop means the model relies on that column. Each column is shuffled 5 times and the drops are averaged. Same model, 30% sample and test flights as above.
+
+![What the timetable model relies on most](images/feature_importance_v2.png)
+
+| Column | Drop in AUC when shuffled |
+|---|---|
+| Departure airport | 0.042 |
+| Arrival airport | 0.033 |
+| Scheduled departure hour | 0.029 |
+| Distance | 0.023 |
+| Scheduled flight length | 0.022 |
+| Scheduled arrival hour | 0.020 |
+| Airline | 0.020 |
+| Day of the week | 0.013 |
+| Month | 0.012 |
+| Plane age | 0.004 |
+
+- **Where a flight goes matters most.** The departure and arrival airports are the two biggest drivers, followed by the scheduled departure hour (evening flights are late most often, as the chart at the top shows).
+- **Plane age barely matters (0.004).** That matches the plain comparison earlier: older planes are late only slightly more often.
+- **Pairs that carry the same information share the credit.** Distance and scheduled flight length say almost the same thing, as do departure and arrival hour. Shuffling one leaves the other in place, so each looks less important than the pair really is.
+- **This shows what the model uses, not what causes delays.** A busy airport may be late because of congestion, weather or the airlines that fly there; the model can't tell those apart.
+
+**So what.** An airline planning its timetable should look first at which airports and departure hours a flight is scheduled into, not at the age of the plane.
+
 ## How an airline could use it
 
 - **Weeks ahead (timetable only, AUC 0.654):** spot the scheduled flights that are late most often and give them more slack, such as a longer turnaround or a different departure hour. Its riskiest 10% are late 45% of the time, against 25.2% overall.
@@ -293,6 +319,7 @@ These are the weak spots I know about, and what each one means for the results.
 - **Precision:** of the flights the model flags, the share that really are late.
 - **Recall:** of all the late flights, the share the model flags.
 - **Precision-recall curve:** precision against recall for every possible length of the flagged list, from flagging one flight to flagging all of them.
+- **Permutation importance:** how much a model's score drops when one column is shuffled so it no longer matches its flight. A bigger drop means the model relies on that column more.
 - **Benchmark:** the simplest sensible way to do the job without a model. Here, ranking flights by how often their route was late in the past.
 
 ## Key choices, and why
@@ -322,6 +349,7 @@ These are the weak spots I know about, and what each one means for the results.
 ├── src/model_v4.py                         # Predicts 2 hours before departure, using delays already known that day
 ├── src/check_probabilities.py              # Checks the 2-hour model's percentages and picks an alert level from costs
 ├── src/practical_value.py                  # Timetable model in practice: riskiest-10% example, precision-recall and calibration
+├── src/what_drives_delays.py              # Which columns the timetable model relies on most (permutation importance)
 ├── src/prediction_time.py                  # Same model at 4, 2 and 1 hours before departure
 ├── src/build_web_page.py                   # Saves 2008 test flights' predictions for the web page
 ├── src/download_weather.py                 # Downloads hourly airport weather (2004–Apr 2008) for the busiest airports
@@ -342,13 +370,14 @@ These are the weak spots I know about, and what each one means for the results.
 1. Download the data into `data/` (see [data/README.md](data/README.md)).
 2. Python:
    ```bash
-   pip install -r requirements.txt
+   pip install -r requirements.txt                          # the exact versions used for the README (Python 3.13)
    jupyter notebook notebooks/flight_delay_analysis.ipynb   # builds data/Fly.db (set FLY_DATA_DIR to build it elsewhere)
    python src/model_v2.py --db data/Fly.db                  # same --pct and --seed give the same sample
    python src/model_v3.py --db data/Fly.db                  # stronger features, benchmark and riskiest-10% chart
    python src/model_v4.py --db data/Fly.db                  # 2 hours before departure
    python src/check_probabilities.py --db data/Fly.db       # can the percentages be trusted? which alert level?
    python src/practical_value.py --db data/Fly.db           # timetable model: riskiest 10%, precision-recall, calibration
+   python src/what_drives_delays.py --db data/Fly.db        # which columns the timetable model relies on most
    python src/prediction_time.py --db data/Fly.db           # 4, 2 and 1 hours before departure
    python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
    python src/download_weather.py --db data/Fly.db          # about 230 MB into data/weather (needs curl)
@@ -376,7 +405,7 @@ These are the weak spots I know about, and what each one means for the results.
 
 - Retrain and test on recent data, including summer months, since delays became more common every year and the test only covers winter and spring.
 - Predict cancellations too, not just late arrivals.
-- Check which features drive each prediction, so an operations team can see *why* a flight was flagged.
+- Explain each single prediction, so an operations team can see *why* a particular flight was flagged. The importance chart above only shows what matters across all flights.
 
 ## About
 

@@ -1,0 +1,11 @@
+feature,plain_name,auc_drop,auc_drop_spread
+Origin,Departure airport,0.0415,0.0006
+Dest,Arrival airport,0.0325,0.0003
+CRSDepHour,Scheduled departure hour,0.0289,0.0004
+Distance,Distance,0.0226,0.0003
+CRSElapsedTime,Scheduled flight length,0.0221,0.0002
+CRSArrHour,Scheduled arrival hour,0.0199,0.0003
+UniqueCarrier,Airline,0.0196,0.0003
+DayOfWeek,Day of the week,0.0129,0.0001
+Month,Month,0.0117,0.0003
+PlaneAge,Plane age,0.0037,0.0002
