@@ -1,0 +1,2 @@
+test_flights,share_late,average_predicted_chance,auc,average_precision,calibration_average_gap,pct,seed
+695298,0.2518,0.2256,0.6543,0.3777,0.0268,30.0,42
