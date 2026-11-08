@@ -77,8 +77,10 @@ def test_reference_scores_come_from_the_results_tables(tmp_path):
     pd.DataFrame({"model": ["Benchmark: route's past delay rate (no model)", "v4 gradient boosting"],
                   "test_auc": [0.5889, 0.7645]}).to_csv(tmp_path / "model_comparison_v4.csv", index=False)
     pd.DataFrame({"prediction_time": ["2 hours before", "After take-off (leaky)"],
-                  "test_auc": [0.7645, 0.9984]}).to_csv(tmp_path / "prediction_time.csv", index=False)
-    assert build_web_page.reference_scores(tmp_path) == {"benchmark_auc": 0.589, "leaky_auc": 0.998}
+                  "test_auc": [0.7645, 0.9984],
+                  "share_of_late_flights_caught": [0.2918, 0.397]}).to_csv(tmp_path / "prediction_time.csv", index=False)
+    assert build_web_page.reference_scores(tmp_path) == {"benchmark_auc": 0.589, "leaky_auc": 0.998,
+                                                         "late_caught_2h": 0.292}
 
 
 def test_place_names_are_written_out_in_full():
