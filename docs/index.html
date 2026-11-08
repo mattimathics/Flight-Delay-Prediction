@@ -42,6 +42,14 @@
           color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; min-width: 0; }
   select, button { font: inherit; font-size: 1rem; padding: 10px 12px; border-radius: 10px;
                    border: 1px solid var(--line); background: var(--card); color: var(--text); width: 100%; }
+  /* "Predict": one button per prediction time, the chosen one filled in */
+  .when { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 14px; }
+  .when-label { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase;
+                letter-spacing: 0.03em; margin-right: 4px; }
+  #when { display: flex; flex-wrap: wrap; gap: 8px; }
+  #when button { width: auto; padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 0.9rem; }
+  #when button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent);
+                                      color: var(--accent); font-weight: 600; }
   .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 14px; }
   .actions button { width: auto; cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
@@ -95,6 +103,10 @@
       <label>To <select id="destination"></select></label>
       <label>Flight <select id="flight"></select></label>
     </div>
+    <div class="when" role="group" aria-label="When to predict">
+      <span class="when-label">When to predict</span>
+      <span id="when"></span>
+    </div>
     <div class="actions">
       <button class="primary" id="check" type="button">Check flight</button>
       <button class="link" id="risky" type="button">or show me a risky flight</button>
@@ -137,16 +149,18 @@
 </main>
 
 <script>
-// Each prediction time, the flight field holding its chance of delay, and its label
+// Each prediction time: the flight field holding its chance of delay, its short label,
+// and how the answer card describes it. Only these four exist because only these models were trained.
 const TIMES = [
-  ["risk_weeks", "Weeks before"],
-  ["risk_4h", "4 hours before"],
-  ["risk_2h", "2 hours before"],
-  ["risk_1h", "1 hour before"],
+  ["risk_weeks", "Weeks before", "Predicted weeks before departure, from the timetable only."],
+  ["risk_4h", "4 hours before", "Predicted 4 hours before departure."],
+  ["risk_2h", "2 hours before", "Predicted 2 hours before departure."],
+  ["risk_1h", "1 hour before", "Predicted 1 hour before departure."],
 ];
 // The headline prediction: 2 hours before departure, the same model the README leads with
 const MAIN = "risk_2h";
-const RISKY = 0.7;  // "risky flight" means the 2-hour model gave it a 70%+ chance of delay
+let chosenTime = MAIN;  // the prediction time the visitor picked; starts at the headline one
+let shownFlight = null;  // the flight on screen, so changing the time can redraw it
 
 const airport = document.getElementById("airport");
 const destination = document.getElementById("destination");
@@ -254,14 +268,16 @@ function factsAtTwoHours(f) {
 // One bar per prediction time, skipping any the data file doesn't have
 function barsOverTime(f) {
   return TIMES.filter(([field]) => f[field] !== null && f[field] !== undefined).map(([field, label]) => `
-    <div class="bar-row" style="${field === MAIN ? "font-weight:600" : ""}"><span>${label}</span>
+    <div class="bar-row" style="${field === chosenTime ? "font-weight:600" : ""}"><span>${label}</span>
       <div class="bar-track"><div class="bar-fill" style="width:${percent(f[field])}"></div></div>
       <span class="num">${percent(f[field])}</span></div>`).join("");
 }
 
 function showFlight(f) {
+  shownFlight = f;
   const average = data.summary.late_overall;
-  const higher = f[MAIN] > average;
+  const higher = f[chosenTime] > average;
+  const when = TIMES.find(([field]) => field === chosenTime)[2];
   const verdict = f.late
     ? `<span class="verdict late">Late by ${f.arrival_delay} min</span>`
     : `<span class="verdict ok">On time</span>`;
@@ -275,9 +291,9 @@ function showFlight(f) {
     <div class="answer">
       <div class="box">
         <div class="small">Chance of arriving 15+ min late</div>
-        <div class="big ${higher ? "higher" : "lower"}">${percent(f[MAIN])}</div>
+        <div class="big ${higher ? "higher" : "lower"}">${percent(f[chosenTime])}</div>
         <div class="small">${higher ? "Higher" : "Lower"} than the average flight (${percent(average)}).
-          Predicted 2 hours before departure.</div>
+          ${when}</div>
       </div>
       <div class="box">
         <div class="small">What really happened</div>
@@ -298,13 +314,32 @@ function showFlight(f) {
     </details>`;
 }
 
+// One button per prediction time; picking one redraws the flight on screen, if any
+function fillTimeButtons() {
+  const holder = document.getElementById("when");
+  holder.innerHTML = TIMES.map(([field, label]) =>
+    `<button type="button" data-field="${field}" aria-pressed="${field === chosenTime}">${label}</button>`).join("");
+  holder.querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
+    chosenTime = button.dataset.field;
+    holder.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b === button));
+    if (shownFlight) showFlight(shownFlight);
+  }));
+}
+
 function showChosenFlight() {
   showFlight(flightsOnRoute()[flightPicker.value]);
 }
 
-// Jump to a random flight the 2-hour model rated 70%+ likely to be late
+// The listed flights the model rates riskiest at one prediction time: the top 10%,
+// the same "warning list" the results on this page describe
+function riskiestTenPercent(field) {
+  const sorted = [...flights].sort((a, b) => b[field] - a[field]);
+  return sorted.slice(0, Math.ceil(sorted.length / 10));
+}
+
+// Jump to a random flight from the warning list for the prediction time the visitor picked
 function showRiskyFlight() {
-  const risky = flights.filter(f => f[MAIN] >= RISKY);
+  const risky = riskiestTenPercent(chosenTime);
   const f = risky[Math.floor(Math.random() * risky.length)];
   airport.value = f.origin;
   fillDestinations();
@@ -346,13 +381,13 @@ function fillStats() {
 
 // Say plainly that the flight list is a sample, and how often the risky flights really were late
 function fillSampleNote() {
-  const risky = flights.filter(f => f[MAIN] >= RISKY);
+  const risky = riskiestTenPercent(MAIN);
   const riskyLate = risky.filter(f => f.late).length / risky.length;
   document.getElementById("sample").textContent =
     `To keep the page small, it lists ${flights.length.toLocaleString("en-GB")} of the ` +
     `${data.summary.flights.toLocaleString("en-GB")} test flights (about 1 in 30), so quiet routes may show only ` +
     `one or two flights; the scores above use all of them. ` +
-    `Of the listed flights rated ${percent(RISKY)}+ likely to be late, ${percent(riskyLate)} really were.`;
+    `Of the listed flights in the riskiest 10% at 2 hours before departure, ${exactPercent(riskyLate)} were really late.`;
 }
 
 fetch("flights.json")
@@ -363,6 +398,7 @@ fetch("flights.json")
     fillAirports();
     fillDestinations();
     fillFlights();
+    fillTimeButtons();
     fillHonestNote();
     fillStats();
     fillSampleNote();
