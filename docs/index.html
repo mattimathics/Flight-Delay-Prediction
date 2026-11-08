@@ -37,7 +37,7 @@
           padding: 20px; margin-top: 16px; }
 
   /* The search box: three drop-downs and a button, like a flight-status site */
-  .search { display: grid; grid-template-columns: 1.3fr 1fr 1.5fr; gap: 12px; }
+  .search { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
   label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; font-weight: 600;
           color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; min-width: 0; }
   select, button { font: inherit; font-size: 1rem; padding: 10px 12px; border-radius: 10px;
@@ -92,7 +92,7 @@
   <section class="card">
     <div class="search">
       <label>From <select id="airport"></select></label>
-      <label>Date <select id="date"></select></label>
+      <label>To <select id="destination"></select></label>
       <label>Flight <select id="flight"></select></label>
     </div>
     <div class="actions">
@@ -150,7 +150,7 @@ const MAIN = "risk_2h";
 const RISKY = 0.7;  // "risky flight" means the 2-hour model gave it a 70%+ chance of delay
 
 const airport = document.getElementById("airport");
-const date = document.getElementById("date");
+const destination = document.getElementById("destination");
 const flightPicker = document.getElementById("flight");
 const result = document.getElementById("result");
 let data, flights;
@@ -193,35 +193,51 @@ function toObjects(json) {
   return json.flights.map(row => Object.fromEntries(json.columns.map((name, i) => [name, row[i]])));
 }
 
+// "ORD" -> "Chicago O'Hare, Illinois", since airport codes confuse most visitors
+function place(code) {
+  return data.airports[code];
+}
+
+// How many listed flights each value of a field has, e.g. flights per departure airport
+function countBy(list, field) {
+  const counts = {};
+  list.forEach(f => { counts[f[field]] = (counts[f[field]] || 0) + 1; });
+  return counts;
+}
+
 function fillAirports() {
   // Busiest airports first, since they have the most flights to pick from
-  const counts = {};
-  flights.forEach(f => { counts[f.origin] = (counts[f.origin] || 0) + 1; });
+  const counts = countBy(flights, "origin");
   const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-  airport.innerHTML = codes.map(code => `<option value="${code}">${code} · ${data.airports[code]}</option>`).join("");
+  airport.innerHTML = codes.map(code => `<option value="${code}">${place(code)}</option>`).join("");
 }
 
-function fillDates() {
-  const dates = [...new Set(flights.filter(f => f.origin === airport.value).map(f => f.date))].sort();
-  // Every date is in 2008, so the drop-down leaves the year out to stay narrow
-  date.innerHTML = dates.map(d => `<option value="${d}">${niceDate(d).replace(" 2008", "")}</option>`).join("");
+// Pick a route rather than a single day, so most choices offer many flights
+function fillDestinations() {
+  const counts = countBy(flights.filter(f => f.origin === airport.value), "dest");
+  const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+  destination.innerHTML = codes.map(code =>
+    `<option value="${code}">${place(code)} (${counts[code]} ${counts[code] === 1 ? "flight" : "flights"})</option>`).join("");
 }
 
-function flightsOnDay() {
-  return flights.filter(f => f.origin === airport.value && f.date === date.value);
+function flightsOnRoute() {
+  return flights.filter(f => f.origin === airport.value && f.dest === destination.value)
+    .sort((a, b) => (a.date + clock(a.scheduled_departure)).localeCompare(b.date + clock(b.scheduled_departure)));
 }
 
 function fillFlights() {
-  flightPicker.innerHTML = flightsOnDay().map((f, i) =>
-    `<option value="${i}">${clock(f.scheduled_departure)} to ${f.dest} · ${f.carrier} ${f.flight_number}</option>`).join("");
+  // Every date is in 2008, so the drop-down leaves the year out to stay short
+  flightPicker.innerHTML = flightsOnRoute().map((f, i) =>
+    `<option value="${i}">${niceDate(f.date).replace(" 2008", "")}, ${clock(f.scheduled_departure)} · ` +
+    `${shortName(data.carriers[f.carrier])} ${f.flight_number}</option>`).join("");
 }
 
 // Plain-English facts the model had 2 hours before departure
 function factsAtTwoHours(f) {
   const facts = [];
   facts.push(f.airport_late_share === null
-    ? `No earlier flights had left ${f.origin} that day yet.`
-    : `${percent(f.airport_late_share)} of flights leaving ${f.origin} in the previous 3 hours had left 15+ minutes late.`);
+    ? `No earlier flights had left ${place(f.origin)} that day yet.`
+    : `${percent(f.airport_late_share)} of flights leaving ${place(f.origin)} in the previous 3 hours had left 15+ minutes late.`);
   if (f.turnaround_minutes === null) {
     facts.push("This plane's previous flight that day wasn't found.");
   } else if (f.previous_flight_delay === null) {
@@ -231,8 +247,8 @@ function factsAtTwoHours(f) {
       ? `The plane's previous flight had taken off ${f.previous_flight_delay} minutes late.`
       : "The plane's previous flight had taken off on time.");
   }
-  if (f.origin_weather) facts.push(`Weather at ${f.origin}: ${f.origin_weather}.`);
-  if (f.dest_weather) facts.push(`Weather at ${f.dest}: ${f.dest_weather}.`);
+  if (f.origin_weather) facts.push(`Weather at ${place(f.origin)}: ${f.origin_weather}.`);
+  if (f.dest_weather) facts.push(`Weather at ${place(f.dest)}: ${f.dest_weather}.`);
   return facts;
 }
 
@@ -253,11 +269,10 @@ function showFlight(f) {
   result.hidden = false;
   result.innerHTML = `
     <div class="flight-title">
-      <h2>${f.carrier} ${f.flight_number} · ${f.origin} → ${f.dest}</h2>
-      <span class="small">${niceDate(f.date)}, ${clock(f.scheduled_departure)}</span>
+      <h2>${place(f.origin)} → ${place(f.dest)}</h2>
     </div>
-    <p class="small" style="margin:0">${shortName(data.carriers[f.carrier])} ·
-      ${data.airports[f.origin]} to ${data.airports[f.dest]}</p>
+    <p class="small" style="margin:0">${shortName(data.carriers[f.carrier])} flight ${f.flight_number} ·
+      ${niceDate(f.date)}, ${clock(f.scheduled_departure)}</p>
     <div class="answer">
       <div class="box">
         <div class="small">Chance of arriving 15+ min late</div>
@@ -283,7 +298,7 @@ function showFlight(f) {
 }
 
 function showChosenFlight() {
-  showFlight(flightsOnDay()[flightPicker.value]);
+  showFlight(flightsOnRoute()[flightPicker.value]);
 }
 
 // Jump to a random flight the 2-hour model rated 70%+ likely to be late
@@ -291,10 +306,10 @@ function showRiskyFlight() {
   const risky = flights.filter(f => f[MAIN] >= RISKY);
   const f = risky[Math.floor(Math.random() * risky.length)];
   airport.value = f.origin;
-  fillDates();
-  date.value = f.date;
+  fillDestinations();
+  destination.value = f.dest;
   fillFlights();
-  flightPicker.value = flightsOnDay().indexOf(f);
+  flightPicker.value = flightsOnRoute().indexOf(f);
   showFlight(f);
 }
 
@@ -334,7 +349,8 @@ function fillSampleNote() {
   const riskyLate = risky.filter(f => f.late).length / risky.length;
   document.getElementById("sample").textContent =
     `To keep the page small, it lists ${flights.length.toLocaleString("en-GB")} of the ` +
-    `${data.summary.flights.toLocaleString("en-GB")} test flights; the scores above use all of them. ` +
+    `${data.summary.flights.toLocaleString("en-GB")} test flights (about 1 in 30), so quiet routes may show only ` +
+    `one or two flights; the scores above use all of them. ` +
     `Of the listed flights rated ${percent(RISKY)}+ likely to be late, ${percent(riskyLate)} really were.`;
 }
 
@@ -344,13 +360,13 @@ fetch("flights.json")
     data = json;
     flights = toObjects(json);
     fillAirports();
-    fillDates();
+    fillDestinations();
     fillFlights();
     fillHonestNote();
     fillStats();
     fillSampleNote();
-    airport.addEventListener("change", () => { fillDates(); fillFlights(); });
-    date.addEventListener("change", fillFlights);
+    airport.addEventListener("change", () => { fillDestinations(); fillFlights(); });
+    destination.addEventListener("change", fillFlights);
     document.getElementById("check").addEventListener("click", showChosenFlight);
     document.getElementById("risky").addEventListener("click", showRiskyFlight);
   });

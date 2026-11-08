@@ -91,13 +91,51 @@ def weather_sentence(report, prefix):
     return "; ".join(parts)
 
 
+# Full state names, because "IL" means nothing to many visitors
+STATE_NAMES = {
+    "AK": "Alaska", "AL": "Alabama", "AR": "Arkansas", "AZ": "Arizona", "CA": "California",
+    "CO": "Colorado", "CT": "Connecticut", "DC": "Washington DC", "DE": "Delaware", "FL": "Florida",
+    "GA": "Georgia", "HI": "Hawaii", "IA": "Iowa", "ID": "Idaho", "IL": "Illinois", "IN": "Indiana",
+    "KS": "Kansas", "KY": "Kentucky", "LA": "Louisiana", "MA": "Massachusetts", "MD": "Maryland",
+    "ME": "Maine", "MI": "Michigan", "MN": "Minnesota", "MO": "Missouri", "MS": "Mississippi",
+    "MT": "Montana", "NC": "North Carolina", "ND": "North Dakota", "NE": "Nebraska",
+    "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NV": "Nevada", "NY": "New York",
+    "OH": "Ohio", "OK": "Oklahoma", "OR": "Oregon", "PA": "Pennsylvania", "PR": "Puerto Rico",
+    "RI": "Rhode Island", "SC": "South Carolina", "SD": "South Dakota", "TN": "Tennessee",
+    "TX": "Texas", "UT": "Utah", "VA": "Virginia", "VI": "US Virgin Islands", "VT": "Vermont",
+    "WA": "Washington", "WI": "Wisconsin", "WV": "West Virginia", "WY": "Wyoming",
+}
+
+# Cities with two airports need the airport's name to tell them apart; some big airports are
+# listed under a suburb (DCA under "Arlington") that visitors wouldn't recognise; and the
+# dataset's airport list has no city for four small airports. All of these are filled in by hand
+CITY_BY_AIRPORT = {
+    "ORD": ("Chicago O'Hare", "IL"), "MDW": ("Chicago Midway", "IL"),
+    "JFK": ("New York JFK", "NY"), "LGA": ("New York LaGuardia", "NY"),
+    "IAH": ("Houston Intercontinental", "TX"), "HOU": ("Houston Hobby", "TX"),
+    "DFW": ("Dallas-Fort Worth", "TX"), "DAL": ("Dallas Love Field", "TX"),
+    "DCA": ("Washington Reagan National", "VA"), "IAD": ("Washington Dulles", "VA"),
+    "CVG": ("Cincinnati/Northern Kentucky", "KY"), "BDL": ("Hartford", "CT"),
+    "CLD": ("Carlsbad", "CA"), "HHH": ("Hilton Head", "SC"),
+    "MQT": ("Marquette", "MI"), "SCE": ("State College", "PA"),
+}
+
+
+def place_name(code, city, state):
+    """'ORD', 'Chicago', 'IL' -> "Chicago O'Hare, Illinois": a name anyone can read."""
+    city, state = CITY_BY_AIRPORT.get(code, (city, state))
+    if pd.isna(city) or pd.isna(state):
+        return code  # nothing better to show than the code
+    return f"{city.replace('Ft. ', 'Fort ')}, {STATE_NAMES.get(state, state)}"
+
+
 def names(db_path):
     """Airline names and airport cities, so the page can say 'Chicago' instead of 'ORD'."""
     with sqlite3.connect(db_path) as conn:
         carriers = pd.read_sql_query("SELECT Code, Description FROM carriers", conn)
         airports = pd.read_sql_query("SELECT iata, city, state FROM airports", conn)
     return (dict(zip(carriers["Code"], carriers["Description"])),
-            {row.iata: f"{row.city}, {row.state}" for row in airports.itertuples()})
+            {row.iata: place_name(row.iata, row.city, row.state) for row in airports.itertuples()})
 
 
 def summary(test, risks):
@@ -188,7 +226,7 @@ def main():
         "summary": {**summary(test, risks), **reference_scores(ROOT / "results")},
         "columns": COLUMNS,
         "carriers": {code: carriers.get(code, code) for code in sorted(used_carriers)},
-        "airports": {code: airports.get(code, code) for code in sorted(used_airports)},
+        "airports": {code: airports.get(code, place_name(code, None, None)) for code in sorted(used_airports)},
         "flights": rows,
     }
     out = ROOT / "docs" / "flights.json"
