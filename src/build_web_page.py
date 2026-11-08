@@ -151,14 +151,17 @@ def summary(test, risks):
 
 
 def reference_scores(results_folder):
-    """Two scores the page compares against, read from the results tables the model scripts saved."""
+    """Scores the page compares against, read from the results tables the model scripts saved."""
     # The simple rule to beat: each route's past delay rate (model_v4.py)
     models = pd.read_csv(Path(results_folder) / "model_comparison_v4.csv")
     benchmark = models.loc[models["model"].str.startswith("Benchmark"), "test_auc"].iloc[0]
     # The cheating model, told each flight's departure delay (prediction_time.py)
     times = pd.read_csv(Path(results_folder) / "prediction_time.csv")
     leaky = times.loc[times["prediction_time"].str.contains("leaky"), "test_auc"].iloc[0]
-    return {"benchmark_auc": round(float(benchmark), 3), "leaky_auc": round(float(leaky), 3)}
+    # How many of all late flights make the 2-hour warning list, so the page can say what it misses
+    caught = times.loc[times["prediction_time"] == "2 hours before", "share_of_late_flights_caught"].iloc[0]
+    return {"benchmark_auc": round(float(benchmark), 3), "leaky_auc": round(float(leaky), 3),
+            "late_caught_2h": round(float(caught), 3)}
 
 
 def flights_to_show(test, show_pct, seed):
