@@ -48,7 +48,7 @@ def test_one_risk_per_prediction_time(db):
 def test_airline_and_airport_names_are_looked_up(db):
     _, _, _, (carriers, airports) = page_data(db)
     assert carriers["AA"] == "American Airlines"
-    assert airports["ORD"] == "Chicago, IL"
+    assert airports["ORD"] == "Chicago O'Hare, Illinois"
 
 
 def test_weather_sentence():
@@ -79,3 +79,13 @@ def test_reference_scores_come_from_the_results_tables(tmp_path):
     pd.DataFrame({"prediction_time": ["2 hours before", "After take-off (leaky)"],
                   "test_auc": [0.7645, 0.9984]}).to_csv(tmp_path / "prediction_time.csv", index=False)
     assert build_web_page.reference_scores(tmp_path) == {"benchmark_auc": 0.589, "leaky_auc": 0.998}
+
+
+def test_place_names_are_written_out_in_full():
+    assert build_web_page.place_name("DFW", "Dallas-Fort Worth", "TX") == "Dallas-Fort Worth, Texas"
+    # Two airports in one city get the airport's name
+    assert build_web_page.place_name("MDW", "Chicago", "IL") == "Chicago Midway, Illinois"
+    # Missing in the dataset, filled in by hand
+    assert build_web_page.place_name("SCE", float("nan"), float("nan")) == "State College, Pennsylvania"
+    # Unknown and not filled in: fall back to the code rather than "nan, nan"
+    assert build_web_page.place_name("XYZ", float("nan"), float("nan")) == "XYZ"
