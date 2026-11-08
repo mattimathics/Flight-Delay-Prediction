@@ -71,3 +71,11 @@ def test_page_can_show_a_smaller_sample_of_the_same_flights(db):
     # Exactly the flights a 20% sample would have picked
     assert set(shown["FlightId"]) == set(test["FlightId"]) & set(model_v3.load(db, pct=20, seed=42)["FlightId"])
     assert build_web_page.flights_to_show(test, None, 42) is test
+
+
+def test_reference_scores_come_from_the_results_tables(tmp_path):
+    pd.DataFrame({"model": ["Benchmark: route's past delay rate (no model)", "v4 gradient boosting"],
+                  "test_auc": [0.5889, 0.7645]}).to_csv(tmp_path / "model_comparison_v4.csv", index=False)
+    pd.DataFrame({"prediction_time": ["2 hours before", "After take-off (leaky)"],
+                  "test_auc": [0.7645, 0.9984]}).to_csv(tmp_path / "prediction_time.csv", index=False)
+    assert build_web_page.reference_scores(tmp_path) == {"benchmark_auc": 0.589, "leaky_auc": 0.998}
