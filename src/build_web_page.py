@@ -112,6 +112,17 @@ def summary(test, risks):
     return {"flights": len(test), "late_overall": round(test["Delayed"].mean(), 3), "by_time": rows}
 
 
+def reference_scores(results_folder):
+    """Two scores the page compares against, read from the results tables the model scripts saved."""
+    # The simple rule to beat: each route's past delay rate (model_v4.py)
+    models = pd.read_csv(Path(results_folder) / "model_comparison_v4.csv")
+    benchmark = models.loc[models["model"].str.startswith("Benchmark"), "test_auc"].iloc[0]
+    # The cheating model, told each flight's departure delay (prediction_time.py)
+    times = pd.read_csv(Path(results_folder) / "prediction_time.csv")
+    leaky = times.loc[times["prediction_time"].str.contains("leaky"), "test_auc"].iloc[0]
+    return {"benchmark_auc": round(float(benchmark), 3), "leaky_auc": round(float(leaky), 3)}
+
+
 def flights_to_show(test, show_pct, seed):
     """The test flights that go on the page: all of them, or the ones in a smaller sample."""
     if show_pct is None:
@@ -173,7 +184,8 @@ def main():
     used_airports = {code for row in rows for code in (row[3], row[4])}
     used_carriers = {row[1] for row in rows}
     page_data = {
-        "summary": summary(test, risks),
+        # The reference scores come from results/, so run model_v4.py and prediction_time.py first
+        "summary": {**summary(test, risks), **reference_scores(ROOT / "results")},
         "columns": COLUMNS,
         "carriers": {code: carriers.get(code, code) for code in sorted(used_carriers)},
         "airports": {code: airports.get(code, code) for code in sorted(used_airports)},
