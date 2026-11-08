@@ -139,10 +139,9 @@
 <script>
 // Each prediction time, the flight field holding its chance of delay, and its label
 const TIMES = [
-  ["risk_weeks", "Weeks ahead"],
+  ["risk_weeks", "Weeks before"],
   ["risk_4h", "4 hours before"],
   ["risk_2h", "2 hours before"],
-  ["risk_2h_weather", "2 hours + weather"],
   ["risk_1h", "1 hour before"],
 ];
 // The headline prediction: 2 hours before departure, the same model the README leads with
@@ -255,7 +254,7 @@ function factsAtTwoHours(f) {
 // One bar per prediction time, skipping any the data file doesn't have
 function barsOverTime(f) {
   return TIMES.filter(([field]) => f[field] !== null && f[field] !== undefined).map(([field, label]) => `
-    <div class="bar-row"><span>${label}</span>
+    <div class="bar-row" style="${field === MAIN ? "font-weight:600" : ""}"><span>${label}</span>
       <div class="bar-track"><div class="bar-fill" style="width:${percent(f[field])}"></div></div>
       <span class="num">${percent(f[field])}</span></div>`).join("");
 }
@@ -288,7 +287,9 @@ function showFlight(f) {
       </div>
     </div>
     <details>
-      <summary>How the prediction changed as departure got closer</summary>
+      <summary>Did the warning change closer to take-off?</summary>
+      <p class="small" style="margin:8px 0 0">The model checked this flight again as news came in, such as
+        the plane flying in running late. More news usually means a better guess.</p>
       ${barsOverTime(f)}
     </details>
     <details>
