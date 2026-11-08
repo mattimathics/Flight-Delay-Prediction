@@ -72,7 +72,8 @@
   .bar-track { background: var(--line); border-radius: 6px; height: 12px; overflow: hidden; }
   .bar-fill { background: var(--accent); height: 100%; }
   .num { text-align: right; font-variant-numeric: tabular-nums; }
-  ul { padding-left: 20px; margin: 8px 0 0; }
+  ul { padding-left: 20px; margin: 4px 0 10px; }
+  details p { margin: 10px 0 0; }
 
   /* Three headline numbers */
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
@@ -245,7 +246,26 @@ function fillFlights() {
     `${shortName(data.carriers[f.carrier])} ${f.flight_number}</option>`).join("");
 }
 
-// Plain-English facts the model had 2 hours before departure
+// What every model knows: the timetable, all fixed weeks in advance
+const TIMETABLE = [
+  "The route and the airline",
+  "The scheduled departure and arrival times, the day of the week and the month",
+  "The flight's length and distance, and the plane's age",
+  "How busy both airports are scheduled to be at that hour",
+  "How often this route was late in 2004–2007",
+];
+
+// What the 4-, 2- and 1-hour models add: only what has already happened that day
+const SAME_DAY = [
+  "How many flights from the same airport left 15+ minutes late in the 3 hours before the prediction",
+  "When the plane is scheduled to land from its previous flight, and how late that flight took off, if it already has",
+];
+
+function list(items) {
+  return `<ul>${items.map(t => `<li>${t}</li>`).join("")}</ul>`;
+}
+
+// Plain-English facts saved for this flight at the 2-hour mark
 function factsAtTwoHours(f) {
   const facts = [];
   facts.push(f.airport_late_share === null
@@ -254,15 +274,32 @@ function factsAtTwoHours(f) {
   if (f.turnaround_minutes === null) {
     facts.push("This plane's previous flight that day wasn't found.");
   } else if (f.previous_flight_delay === null) {
-    facts.push("The plane's previous flight hadn't taken off yet.");
+    facts.push(`The plane was scheduled to land here ${f.turnaround_minutes} minutes before departure; its previous flight hadn't taken off yet.`);
   } else {
-    facts.push(f.previous_flight_delay > 0
-      ? `The plane's previous flight had taken off ${f.previous_flight_delay} minutes late.`
-      : "The plane's previous flight had taken off on time.");
+    facts.push(`The plane was scheduled to land here ${f.turnaround_minutes} minutes before departure; its previous flight ` +
+      (f.previous_flight_delay > 0 ? `took off ${f.previous_flight_delay} minutes late.` : "took off on time."));
   }
-  if (f.origin_weather) facts.push(`Weather at ${place(f.origin)}: ${f.origin_weather}.`);
-  if (f.dest_weather) facts.push(`Weather at ${place(f.dest)}: ${f.dest_weather}.`);
+  // Only the "with weather" version of the 2-hour model uses these reports
+  if (f.origin_weather) facts.push(`Weather at ${place(f.origin)} (weather version only): ${f.origin_weather}.`);
+  if (f.dest_weather) facts.push(`Weather at ${place(f.dest)} (weather version only): ${f.dest_weather}.`);
   return facts;
+}
+
+// The whole "What does the model know?" section, for the prediction time the visitor picked
+function whatTheModelKnows(f) {
+  const label = TIMES.find(([field]) => field === chosenTime)[1].toLowerCase();
+  const weeks = chosenTime === "risk_weeks";
+  const general = weeks
+    ? `<p><strong>Weeks before, it only knows the timetable:</strong></p>${list(TIMETABLE)}
+       <p class="small">Predict closer to departure and it also learns what has happened that day:</p>${list(SAME_DAY)}`
+    : `<p><strong>${label[0].toUpperCase() + label.slice(1)} departure, it knows the timetable:</strong></p>${list(TIMETABLE)}
+       <p><strong>plus what has already happened that day:</strong></p>${list(SAME_DAY)}`;
+  const thisFlight = chosenTime === "risk_2h"
+    ? "<p><strong>For this flight, that meant:</strong></p>"
+    : "<p><strong>For this flight, 2 hours before departure</strong> (details are only saved for that time):</p>";
+  return `${general}
+    <p class="small">It never sees anything that happens after the prediction is made. That is what keeps it honest.</p>
+    ${thisFlight}${list(factsAtTwoHours(f))}`;
 }
 
 // One bar per prediction time, skipping any the data file doesn't have
@@ -309,8 +346,8 @@ function showFlight(f) {
       ${barsOverTime(f)}
     </details>
     <details>
-      <summary>What the model knew 2 hours before departure</summary>
-      <ul>${factsAtTwoHours(f).map(t => `<li>${t}</li>`).join("")}</ul>
+      <summary>What does the model know?</summary>
+      ${whatTheModelKnows(f)}
     </details>`;
 }
 
