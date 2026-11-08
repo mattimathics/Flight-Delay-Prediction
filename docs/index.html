@@ -172,9 +172,15 @@ function percent(share) {
   return Math.round(share * 100) + "%";
 }
 
-// 0.765 -> "77/100"
-function outOf100(share) {
-  return Math.round(share * 100) + "/100";
+// 0.735 -> "73.5%", for headline results, so they read exactly as in the README
+function exactPercent(share) {
+  return (share * 100).toFixed(1) + "%";
+}
+
+// 0.765 -> "76.5/100". One decimal, because the scores are stored to 3 decimals and
+// rounding 0.765 again to a whole number would show 77 while the README says 0.765
+function outOf100(score) {
+  return (score * 100).toFixed(1) + "/100";
 }
 
 // "American Eagle Airlines Inc." -> "American Eagle Airlines", since shorter names read better
@@ -296,7 +302,7 @@ function fillHonestNote() {
   const s = data.summary;
   const twoHours = s.by_time.find(row => row.prediction_time === "2 hours before");
   document.getElementById("honest").textContent =
-    `My first model scored an almost perfect ${(s.leaky_auc * 100).toFixed(1)}/100, because it was secretly ` +
+    `My first model scored an almost perfect ${outOf100(s.leaky_auc)}, because it was secretly ` +
     `told how late each flight had taken off, which nobody knows until after departure. I removed everything ` +
     `known only after take-off. The honest model scores ${outOf100(twoHours.auc)}, and every prediction on ` +
     `this page uses only what was known at the time.`;
@@ -307,19 +313,19 @@ function fillStats() {
   const twoHours = s.by_time.find(row => row.prediction_time === "2 hours before");
   document.getElementById("tested").textContent =
     `Tested on ${s.flights.toLocaleString("en-GB")} flights from January to April 2008 that the model never saw. ` +
-    `${percent(s.late_overall)} of them arrived 15+ minutes late. Scores are for the prediction made 2 hours before departure.`;
+    `${exactPercent(s.late_overall)} of them arrived 15+ minutes late. Scores are for the prediction made 2 hours before departure.`;
   document.getElementById("stats").innerHTML = `
     <div class="box stat"><div class="big">${outOf100(twoHours.auc)}</div>
       <div class="small">Given one late and one on-time flight, how often it rates the late one riskier.
         A coin flip scores 50.</div></div>
-    <div class="box stat"><div class="big">${percent(twoHours.late_in_riskiest_10pct)}</div>
+    <div class="box stat"><div class="big">${exactPercent(twoHours.late_in_riskiest_10pct)}</div>
       <div class="small">of the 10% of flights it rates riskiest were really late, against
-        ${percent(s.late_overall)} of all flights.</div></div>
+        ${exactPercent(s.late_overall)} of all flights.</div></div>
     <div class="box stat"><div class="big">${outOf100(s.benchmark_auc)}</div>
       <div class="small">The simple rule it beats: guessing from each route's past delay rate.</div></div>`;
   document.getElementById("table").innerHTML = s.by_time.map(row => `
     <tr><td>${row.prediction_time.replace("+ weather", "with weather")}</td>
-      <td>${outOf100(row.auc)}</td><td>${percent(row.late_in_riskiest_10pct)}</td></tr>`).join("");
+      <td>${outOf100(row.auc)}</td><td>${exactPercent(row.late_in_riskiest_10pct)}</td></tr>`).join("");
 }
 
 // Say plainly that the flight list is a sample, and how often the risky flights really were late
