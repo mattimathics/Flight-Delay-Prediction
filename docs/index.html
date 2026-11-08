@@ -75,9 +75,8 @@
   ul { padding-left: 20px; margin: 4px 0 10px; }
   details p { margin: 10px 0 0; }
 
-  /* Three headline numbers */
-  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 12px; }
-  .stat .big { font-size: 2rem; }
+    /* "How good is it?": the warning list against any flight, a little wider labels */
+  .bar-row.compare-row { grid-template-columns: 11rem 1fr 3.5rem; }
   .notice { border-left: 4px solid var(--accent); background: var(--accent-soft); }
   table { border-collapse: collapse; width: 100%; margin-top: 10px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
@@ -87,7 +86,8 @@
   @media (max-width: 600px) {
     main { padding-top: 24px; }
     h1 { font-size: 1.6rem; }
-    .search, .answer, .stats { grid-template-columns: 1fr; }
+    .search, .answer { grid-template-columns: 1fr; }
+    .bar-row.compare-row { grid-template-columns: 8.5rem 1fr 3.2rem; }
     .bar-row { grid-template-columns: 7.5rem 1fr 2.5rem; }
   }
 </style>
@@ -123,13 +123,14 @@
 
   <section class="card">
     <h2>How good is it?</h2>
-    <p class="small" id="tested"></p>
-    <div class="stats" id="stats"></div>
+    <p id="headline" style="font-size:1.1rem;margin-top:8px"></p>
+    <div id="compare"></div>
+    <p class="small" id="tested" style="margin-top:12px"></p>
     <details>
       <summary>Results at every prediction time</summary>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Predicted</th><th>Ranks a late flight above an on-time one</th>
+          <thead><tr><th>Predicted</th><th>Score out of 100 (a coin flip scores 50)</th>
             <th>Riskiest 10% that were late</th></tr></thead>
           <tbody id="table"></tbody>
         </table>
@@ -137,6 +138,7 @@
       <p class="small" style="margin-top:10px">The closer to departure, the more the model knows, such as
         whether the plane flying in is already late. "With weather" uses the last airport weather report
         issued before the 2-hour mark.</p>
+      <p class="small" id="benchmark"></p>
     </details>
   </section>
 
@@ -399,18 +401,25 @@ function fillHonestNote() {
 function fillStats() {
   const s = data.summary;
   const twoHours = s.by_time.find(row => row.prediction_time === "2 hours before");
+  const warned = twoHours.late_in_riskiest_10pct;
+  const average = s.late_overall;
+  // The headline in words anyone can read: 0.735 -> "7 in 10", 0.252 -> "1 in 4"
+  document.getElementById("headline").innerHTML =
+    `Of the flights it warns about, <strong>${Math.round(warned * 10)} in 10</strong> were really late. ` +
+    `Pick flights at random and only <strong>1 in ${Math.round(1 / average)}</strong> are.`;
+  // Two bars: the warning list against any flight
+  document.getElementById("compare").innerHTML = [
+    ["Flights it warns about", warned],
+    ["Any flight", average],
+  ].map(([label, share]) => `
+    <div class="bar-row compare-row"><span>${label}</span>
+      <div class="bar-track"><div class="bar-fill" style="width:${percent(share)}"></div></div>
+      <span class="num">${exactPercent(share)}</span></div>`).join("");
   document.getElementById("tested").textContent =
-    `Tested on ${s.flights.toLocaleString("en-GB")} flights from January to April 2008 that the model never saw. ` +
-    `${exactPercent(s.late_overall)} of them arrived 15+ minutes late. Scores are for the prediction made 2 hours before departure.`;
-  document.getElementById("stats").innerHTML = `
-    <div class="box stat"><div class="big">${outOf100(twoHours.auc)}</div>
-      <div class="small">Given one late and one on-time flight, how often it rates the late one riskier.
-        A coin flip scores 50.</div></div>
-    <div class="box stat"><div class="big">${exactPercent(twoHours.late_in_riskiest_10pct)}</div>
-      <div class="small">of the 10% of flights it rates riskiest were really late, against
-        ${exactPercent(s.late_overall)} of all flights.</div></div>
-    <div class="box stat"><div class="big">${outOf100(s.benchmark_auc)}</div>
-      <div class="small">The simple rule it beats: guessing from each route's past delay rate.</div></div>`;
+    `"Warns about" means the 10% of flights it rates riskiest, 2 hours before departure. Tested on ` +
+    `${s.flights.toLocaleString("en-GB")} flights from January to April 2008 that the model never saw.`;
+  document.getElementById("benchmark").textContent =
+    `For comparison, a simple rule that guesses from each route's past delay rate scores ${outOf100(s.benchmark_auc)}.`;
   document.getElementById("table").innerHTML = s.by_time.map(row => `
     <tr><td>${row.prediction_time.replace("+ weather", "with weather")}</td>
       <td>${outOf100(row.auc)}</td><td>${exactPercent(row.late_in_riskiest_10pct)}</td></tr>`).join("");
