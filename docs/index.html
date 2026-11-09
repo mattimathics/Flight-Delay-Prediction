@@ -73,11 +73,6 @@
   .medium { color: var(--text); }
   .reasons { margin: 14px 0 0; }
   .reasons p { margin: 0 0 6px; }
-  .reasons ul { margin: 0 0 6px; padding-left: 0; list-style: none; }
-  .reasons li { margin: 4px 0; display: flex; gap: 10px; }
-  .reasons .pts { flex: 0 0 auto; min-width: 3.2em; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .reasons .up { color: var(--late); }
-  .reasons .down { color: var(--ok); }
   .judgement { margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--bg); font-weight: 600; }
   details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
   summary { cursor: pointer; font-weight: 600; }
@@ -349,17 +344,22 @@ const REASONS = {
   plane_age: f => "The plane's age",
 };
 
-// "Why this chance?": the model's three biggest reasons, each with how far it moved the chance
+// "Why": the model's biggest reasons in one or two plain sentences, biggest first
 function reasons(f) {
   if (!f.reasons_2h || !f.reasons_2h.length) return "";
-  const items = f.reasons_2h.map(([group, points]) => {
-    const up = points > 0;
-    return `<li><span class="pts ${up ? "up" : "down"}">${up ? "+" : "−"}${Math.abs(points)}</span> <span>${REASONS[group](f)}</span></li>`;
-  });
+  // The reason labels start with a capital; inside a sentence they shouldn't
+  const words = group => { const text = REASONS[group](f); return text[0].toLowerCase() + text.slice(1); };
+  const list = items => items.length < 2 ? items.join("")
+    : items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
+  const up = f.reasons_2h.filter(([, points]) => points > 0).map(([group]) => words(group));
+  const down = f.reasons_2h.filter(([, points]) => points < 0).map(([group]) => words(group));
+  const sentences = [];
+  if (up.length) sentences.push(`<p>Raised by ${list(up)}.</p>`);
+  if (down.length) sentences.push(`<p>Lowered by ${list(down)}.</p>`);
   const note = chosenTime === "risk_2h" ? "" : " (2-hour prediction)";
-  return `<div class="reasons"><p><strong>Why this chance?</strong>${note}</p>
-    <ul>${items.join("")}</ul>
-    <p class="small">+ raises the chance, − lowers it, in percentage points. Model reasons, not proven causes.</p></div>`;
+  return `<div class="reasons"><p><strong>Why</strong>${note}</p>
+    ${sentences.join("")}
+    <p class="small">What the model weighed most, not proven causes.</p></div>`;
 }
 
 // The whole "What does the model know?" section, for the prediction time the visitor picked
