@@ -194,6 +194,20 @@ function percent(share) {
   return Math.round(share * 100) + "%";
 }
 
+// A model's chance: never "100%" or "0%", because no prediction is ever certain
+function chance(share) {
+  if (share >= 0.995) return "Over 99%";
+  if (share < 0.005) return "Under 1%";
+  return percent(share);
+}
+
+// The sentence under a flight's chance, with the same limits as chance()
+function inEvery100(share) {
+  if (share >= 0.995) return "More than 99 in 100";
+  if (share < 0.005) return "Fewer than 1 in 100";
+  return `About ${per100(share)} in 100`;
+}
+
 // 688 -> "11 h 28 min", 45 -> "45 min", since nobody converts big minute counts in their head
 function duration(minutes) {
   const hours = Math.floor(minutes / 60);
@@ -409,7 +423,7 @@ function barsOverTime(f) {
   return TIMES.filter(([field]) => f[field] !== null && f[field] !== undefined).map(([field, label]) => `
     <div class="bar-row" style="${field === chosenTime ? "font-weight:600" : ""}"><span>${label}</span>
       <div class="bar-track"><div class="bar-fill" style="width:${percent(f[field])}"></div></div>
-      <span class="num">${percent(f[field])}</span></div>`).join("");
+      <span class="num">${chance(f[field])}</span></div>`).join("");
 }
 
 function showFlight(f) {
@@ -429,9 +443,9 @@ function showFlight(f) {
     <div class="answer">
       <div class="box">
         <div class="small">Chance of arriving 15+ min late</div>
-        <div class="big ${{high: "higher", medium: "medium", low: "lower"}[level]}">${percent(f[chosenTime])}</div>
+        <div class="big ${{high: "higher", medium: "medium", low: "lower"}[level]}">${chance(f[chosenTime])}</div>
         <span class="risk ${level}">${level[0].toUpperCase() + level.slice(1)} risk</span>
-        <div class="small">About ${per100(f[chosenTime])} in 100 flights like this arrive late (average: ${per100(average)}).</div>
+        <div class="small">${inEvery100(f[chosenTime])} flights like this arrive late (average: ${per100(average)}).</div>
         <div class="small" style="margin-top:6px"><strong>${TIPS[level]}</strong></div>
       </div>
       <div class="box">
