@@ -310,18 +310,9 @@ function reasons(f) {
   const note = chosenTime === "risk_2h" ? "" : " (2-hour prediction)";
   return `<div class="reasons"><p><strong>Why</strong>${note}</p>
     ${sentences.join("")}
-    <p class="small">What the model weighed most, not proven causes.</p></div>`;
+    <p class="small">What the model weighed most, not proven causes. It uses only what was known at the time of the prediction.</p></div>`;
 }
 
-// "What does the model know?": in two short lines, for the prediction time the visitor picked
-function whatTheModelKnows(f) {
-  const timetable = "The timetable, such as the route, airline, date, departure time and how often this route was late before.";
-  const sameDay = "What has happened that day: how late the plane flying in is, and how many flights have left the airport late.";
-  const known = chosenTime === "risk_weeks"
-    ? `<p>${timetable}</p><p class="small">Closer to take-off, the other models also learn what has happened that day.</p>`
-    : `<p>${timetable}</p><p>${sameDay}</p>`;
-  return `${known}<p class="small">Never anything after the prediction is made.</p>`;
-}
 
 // The lowest chance that still makes each time's warning list (its riskiest 1 in 10 listed flights)
 const warningCutoff = {};
@@ -409,10 +400,7 @@ function showFlight(f) {
       <p class="section-title">How it changed closer to take-off</p>
       ${barsOverTime(f)}
     </section>
-    <details>
-      <summary>What does the model know?</summary>
-      ${whatTheModelKnows(f)}
-    </details>`;
+`;
 }
 
 // One button per prediction time; picking one redraws the flight on screen, if any
