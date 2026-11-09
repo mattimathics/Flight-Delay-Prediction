@@ -96,9 +96,13 @@
   .over-time p { margin: 10px 0 0; }
   .over-time .section-title { margin: 0; font-weight: 600; }
 
-    /* "How good is it?": the warning list against any flight, a little wider labels */
+    /* "How good is the model?": the warning list against any flight, a little wider labels */
   .bar-row.compare-row { grid-template-columns: 11rem 1fr 5.5rem; }
   .compare-row .num { white-space: nowrap; }
+  .bar-fill.late { background: var(--late); }
+  .bar-fill.random { background: var(--muted); }
+  .score { margin: 6px 0 10px; }
+  .score .big { font-size: 2.4rem; display: block; }
   table { border-collapse: collapse; width: 100%; margin-top: 10px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
   th { font-size: 0.8rem; color: var(--muted); }
@@ -141,12 +145,13 @@
   <section class="card" id="result" aria-live="polite" hidden></section>
 
   <section class="card">
-    <h2>How good is it?</h2>
-    <p>Each day the model puts its riskiest 1 in 10 flights on a <strong>warning list</strong>. How many were late?</p>
+    <h2>How good is the model?</h2>
+    <p class="small" id="tested"></p>
+    <p>Each day it puts the 1 in 10 flights it thinks are most likely to be late on a <strong>warning list</strong>.</p>
+    <p class="score"><span class="big higher" id="warned"></span> of them really were late.</p>
     <div id="compare"></div>
     <p id="headline" style="font-size:1.1rem;margin-top:12px"></p>
     <p id="misses"></p>
-    <p class="small" id="tested"></p>
     <details>
       <summary>Does it get better closer to take-off?</summary>
       <div style="overflow-x:auto">
@@ -460,23 +465,23 @@ function fillStats() {
   const twoHours = s.by_time.find(row => row.prediction_time === "2 hours before");
   const warned = twoHours.late_in_riskiest_10pct;
   const average = s.late_overall;
-  // Two bars, each in words: the warning list against flights picked at random
+  document.getElementById("warned").textContent = `${per100(warned)} in 100`;
+  // Two bars: the warning list (red, like High risk) against flights picked at random (grey)
   document.getElementById("compare").innerHTML = [
-    ["On its warning list", warned],
-    ["Picked at random", average],
-  ].map(([label, share]) => `
+    ["Its warning list", warned, "late"],
+    ["Random flights", average, "random"],
+  ].map(([label, share, cls]) => `
     <div class="bar-row compare-row"><span>${label}</span>
-      <div class="bar-track"><div class="bar-fill" style="width:${percent(share)}"></div></div>
+      <div class="bar-track"><div class="bar-fill ${cls}" style="width:${percent(share)}"></div></div>
       <span class="num">${per100(share)} in 100</span></div>`).join("");
   // How many times better than chance: 0.735 / 0.252 is about 3
   document.getElementById("headline").innerHTML =
-    `About <strong>${Math.round(warned / average)} times</strong> better than guessing.`;
-  // What the list misses: 0.292 of late flights make it; a list of 1 in 10 could hold at most 0.1 / 0.252
+    `About <strong>${Math.round(warned / average)} times</strong> better than picking flights at random.`;
+  // The honest limit: only 0.292 of late flights make the list
   document.getElementById("misses").textContent =
-    `It catches about ${Math.round(s.late_caught_2h * 10)} in 10 late flights; a list this size could hold ` +
-    `at most ${Math.round(0.1 / average * 10)} in 10.`;
+    `It doesn't catch every delay: about ${Math.round(s.late_caught_2h * 10)} in 10 late flights are on its list.`;
   document.getElementById("tested").textContent =
-    `2 hours before departure, on ${s.flights.toLocaleString("en-GB")} unseen flights (Jan–Apr 2008).`;
+    `Tested on ${s.flights.toLocaleString("en-GB")} flights it had never seen (Jan–Apr 2008), 2 hours before departure.`;
   // One row per prediction time, then flights picked at random for comparison
   document.getElementById("table").innerHTML = s.by_time.map(row => `
     <tr><td>${row.prediction_time.replace("+ weather", "with weather").replace("Weeks ahead", "Weeks before")}</td>
