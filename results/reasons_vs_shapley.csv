@@ -1,0 +1,10 @@
+group,biggest_reason_demo,biggest_reason_shapley,mean_points_demo,mean_points_shapley,same_direction
+plane,0.522,0.5115,13.0097,10.3253,0.747
+time,0.153,0.181,4.7073,4.2003,0.7725
+airport_today,0.108,0.1615,6.262,6.4804,0.936
+route,0.104,0.0865,5.4909,4.066,0.887
+airline,0.076,0.0475,3.7723,2.4239,0.7495
+length,0.0215,0.0065,1.8081,2.1854,0.717
+busyness,0.0065,0.003,2.3619,1.8423,0.8225
+date,0.009,0.0025,2.0796,1.5571,0.869
+plane_age,0.0,0.0,0.7624,0.6191,0.8085

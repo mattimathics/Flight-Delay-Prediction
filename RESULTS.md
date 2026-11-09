@@ -236,26 +236,46 @@ Every score above comes from one test set. A different set of flights would give
 
 ## Why was this flight flagged? (`src/explain_flights.py`)
 
-The demo shows each listed flight's biggest reasons for its 2-hour chance of delay. For each flight, one group of facts at a time (the plane flying in, the airport's delays so far today, the time of day, the route, the airline, ...) is swapped for the values of 20 ordinary training flights, and the flight is rescored. How far the chance moves is that group's push. The page shows the three biggest pushes of at least 1 point. This needs no extra package: it only uses the model's own predictions. Each push is measured on its own, so they don't add up to the chance: when almost every fact points to a delay, removing any single one changes little.
+The demo shows each listed flight's biggest reasons for its 2-hour chance of delay, as **exact Shapley values** (what SHAP estimates). The model's columns are put in 9 groups a traveller would recognise: the plane flying in, the airport's delays so far today, the time of day, the route, the airline, and so on. Each flight is scored under all 2^9 = 512 mixes of its own values and those of 20 ordinary training flights. A group's push is its effect averaged over every mix of the others, so the 9 pushes add up exactly to the flight's chance minus an ordinary flight's chance (**20.0%**). The page shows the three biggest pushes of at least 1 point. No extra package is needed: it only uses the model's own predictions.
 
-Across the 23,363 flights on the page (2-hour model, retrained on the 30% sample):
+So that each flight's reasons add up to the chance it shows, the page's 2-hour chances come from the same model as the reasons, retrained on the 30% sample with unchanged code (see Step 9). On the 23,363 page flights that model's AUC is 0.766, against 0.768 for the October build, and 74.3% of its riskiest 10% were late (74.5% before). The page's headline numbers still come from the published runs over all 695,298 test flights.
+
+Across the 23,363 flights on the page:
 
 | Group | Biggest reason for | Average push (points out of 100) | Raises the chance for |
 |---|---|---|---|
-| The plane flying in | 51.8% of flights | 12.7 | 24.9% of flights |
-| Time of day | 15.1% | 4.6 | 50.0% |
-| Departure airport's delays so far today | 11.0% | 6.2 | 45.5% |
-| Route and its airports | 10.0% | 5.4 | 53.2% |
-| Airline | 7.7% | 3.8 | 42.1% |
-| Flight length | 2.8% | 1.9 | 49.7% |
-| Month and day of the week | 0.9% | 2.1 | 53.6% |
-| Flights scheduled in the same hour | 0.8% | 2.3 | 52.0% |
-| Plane age | 0.02% | 0.8 | 56.9% |
+| The plane flying in | 51.1% of flights | 10.0 | 50.7% of flights |
+| Time of day | 18.5% | 4.1 | 61.6% |
+| Departure airport's delays so far today | 16.3% | 6.4 | 49.4% |
+| Route and its airports | 8.5% | 4.0 | 52.9% |
+| Airline | 4.4% | 2.4 | 66.2% |
+| Flight length | 0.8% | 2.2 | 75.3% |
+| Flights scheduled in the same hour | 0.3% | 1.8 | 37.0% |
+| Month and day of the week | 0.2% | 1.6 | 54.9% |
+| Plane age | 0.01% | 0.6 | 64.5% |
 
-- **The plane flying in matters most, mostly as good news.** For 3 in 4 flights it lowers the chance, because the incoming plane is on time.
+- **The plane flying in matters most**: the biggest reason for half the flights, raising the chance for about half and lowering it for the rest.
 - **Not knowing can raise the chance too.** If the plane's previous flight hasn't taken off 2 hours before departure, it is usually still on an earlier leg, so the turnaround will be tight. Nothing from after the cutoff is used.
 - **Plane age barely matters**, as in "What drives the predictions".
 - **These are the model's reasons, not causes.** (`results/flight_reasons.csv`)
+
+**A simpler method agrees on the main reason 4 times in 5** (`src/check_reasons.py`). The demo first used a one-at-a-time method: swap one group for ordinary flights' values and see how far the chance moves. It is faster but its pushes don't add up. Compared with exact Shapley values on 2,000 random page flights (the Shapley values added up to within 3e-14 points):
+
+| Group | Biggest reason: one at a time | Biggest reason: Shapley | Average push: one at a time | Average push: Shapley | Same direction |
+|---|---|---|---|---|---|
+| The plane flying in | 52.2% | 51.1% | 13.0 | 10.3 | 74.7% |
+| Time of day | 15.3% | 18.1% | 4.7 | 4.2 | 77.3% |
+| Airport's delays so far today | 10.8% | 16.2% | 6.3 | 6.5 | 93.6% |
+| Route and its airports | 10.4% | 8.7% | 5.5 | 4.1 | 88.7% |
+| Airline | 7.6% | 4.8% | 3.8 | 2.4 | 75.0% |
+| Flight length | 2.2% | 0.7% | 1.8 | 2.2 | 71.7% |
+| Flights scheduled in the same hour | 0.7% | 0.3% | 2.4 | 1.8 | 82.3% |
+| Month and day of the week | 0.9% | 0.3% | 2.1 | 1.6 | 86.9% |
+| Plane age | 0.0% | 0.0% | 0.8 | 0.6 | 80.9% |
+
+- **Both methods tell the same story:** the plane flying in first, then the time of day and the airport's delays today.
+- **They name the same biggest reason for 78.4% of flights**, and 2.1 of the simple method's 3 reasons are in Shapley's top 3 on average (70.5%). (`results/reasons_vs_shapley.csv`, `results/reasons_vs_shapley_agreement.csv`)
+- **Where they differ:** when two facts only matter together, swapping one alone credits each with the whole effect, while Shapley splits it. A test in `tests/test_check_reasons.py` shows this with a late plane and an evening departure.
 
 ## The timetable model in practice
 
@@ -356,7 +376,6 @@ The **precision-recall curve** draws that whole trade-off. Moving right, more la
 
 - Retrain and test on recent data, including summer.
 - Predict cancellations too.
-- Check the per-flight reasons against a standard method such as SHAP.
 
 ## Run every script
 
@@ -376,7 +395,8 @@ python src/download_weather.py --db data/Fly.db          # about 230 MB into dat
 python src/model_weather.py --db data/Fly.db             # 2-hour model with and without weather
 python src/error_bars.py --db data/Fly.db --weather data/weather  # 95% ranges for every score; about 6 hours at --pct 30
 python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
-python src/explain_flights.py --db data/Fly.db --show-pct 1  # adds each listed flight's reasons to docs/flights.json
+python src/explain_flights.py --db data/Fly.db --show-pct 1  # each listed flight's Shapley reasons and 2-hour chance, into docs/flights.json
+python src/check_reasons.py --show-pct 1                 # compares the simpler one-at-a-time reasons with Shapley
 python src/airport_encoding.py --db data/Fly.db          # airports as categories vs past delay rates
 python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
 python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
