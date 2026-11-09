@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flight Delay Predictor</title>
-<meta name="description" content="Pick a real US flight from 2008 and see how likely an honest, leak-free model thought it was to be late, then what really happened.">
+<meta name="description" content="Pick a real US flight from 2008 and see how likely the model thought it was to be late, then what really happened.">
 <!-- What LinkedIn and other sites show when the link is shared -->
 <meta property="og:title" content="Will this flight be late? A flight delay predictor">
 <meta property="og:description" content="Pick a real 2008 US flight, see the model's chance of delay, then what really happened. Built on 31 million flights by Matthew James Tan.">
@@ -90,7 +90,6 @@
     /* "How good is it?": the warning list against any flight, a little wider labels */
   .bar-row.compare-row { grid-template-columns: 11rem 1fr 5.5rem; }
   .compare-row .num { white-space: nowrap; }
-  .notice { border-left: 4px solid var(--accent); background: var(--accent-soft); }
   table { border-collapse: collapse; width: 100%; margin-top: 10px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
   th { font-size: 0.8rem; color: var(--muted); }
@@ -130,11 +129,6 @@
   </section>
 
   <section class="card" id="result" aria-live="polite" hidden></section>
-
-  <section class="card notice">
-    <h2>Why "honest"?</h2>
-    <p id="honest" style="margin:0"></p>
-  </section>
 
   <section class="card">
     <h2>How good is it?</h2>
@@ -371,7 +365,7 @@ function whatTheModelKnows(f) {
     ? "<p><strong>For this flight, that meant:</strong></p>"
     : "<p><strong>For this flight, 2 hours before departure</strong> (details are only saved for that time):</p>";
   return `${general}
-    <p class="small">It never sees anything that happens after the prediction is made. That is what keeps it honest.</p>
+    <p class="small">It never sees anything that happens after the prediction is made.</p>
     ${thisFlight}${list(factsAtTwoHours(f))}`;
 }
 
@@ -507,16 +501,6 @@ function showMistake() {
   jumpTo(f);
 }
 
-function fillHonestNote() {
-  const s = data.summary;
-  const twoHours = s.by_time.find(row => row.prediction_time === "2 hours before");
-  const timesBetter = Math.round(twoHours.late_in_riskiest_10pct / s.late_overall);
-  document.getElementById("honest").textContent =
-    `My first model looked almost perfect because it was secretly told how late each flight took off, ` +
-    `which nobody knows before departure. This honest version uses only what was known at the time, ` +
-    `and still finds late flights about ${timesBetter} times as often as guessing.`;
-}
-
 // 0.735 -> "74", for "about 74 in every 100" sentences
 function per100(share) {
   return Math.round(share * 100);
@@ -572,7 +556,7 @@ fetch("flights.json")
     fillFlights();
     setWarningCutoffs();
     fillTimeButtons();
-    fillHonestNote();
+    
     fillStats();
     fillSampleNote();
     airport.addEventListener("change", () => { fillDestinations(); fillFlights(); });
