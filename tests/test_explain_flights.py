@@ -62,3 +62,12 @@ def test_shapley_pushes_add_up_to_the_gap_from_an_ordinary_flight():
     assert np.isclose(baseline, 10)  # ordinary flights: 10 minutes late -> 10%
     # 60 minutes late -> 60%, so the pushes add up to 50; 0 minutes -> 0%, so -10
     assert np.allclose(pushes.sum(axis=1), [50, -10])
+
+
+def test_set_column_overwrites_an_existing_column():
+    page = {"columns": ["date", "carrier", "flight_number", "origin", "dest", "scheduled_departure", "risk_2h"],
+            "flights": [["2008-01-03", "AA", 12, "ORD", "LAX", 905, 0.5]]}
+    flights = pd.DataFrame({"Year": [2008], "Month": [1], "DayofMonth": [3], "UniqueCarrier": ["AA"],
+                            "FlightNum": [12], "Origin": ["ORD"], "Dest": ["LAX"], "CRSDepTime": [905]})
+    assert explain_flights.set_column(page, explain_flights.page_key(flights), [0.61], "risk_2h") == 1
+    assert page["flights"][0][-1] == 0.61 and len(page["columns"]) == 7

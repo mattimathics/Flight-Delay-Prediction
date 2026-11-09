@@ -129,16 +129,16 @@ def page_key(flights):
         flights["CRSDepTime"].astype(int)))
 
 
-def add_to_page(page, keys, reasons):
-    """Add a reasons_2h column to the page data, matching each flight by its identifying fields."""
-    by_key = dict(zip(keys, reasons))
+def set_column(page, keys, values, name):
+    """Set one column of the page data, matching each flight by its identifying fields; adds it if new."""
+    by_key = dict(zip(keys, values))
     cols = page["columns"]
     at = [cols.index(c) for c in ("date", "carrier", "flight_number", "origin", "dest", "scheduled_departure")]
-    if "reasons_2h" not in cols:
-        cols.append("reasons_2h")
+    if name not in cols:
+        cols.append(name)
         for row in page["flights"]:
             row.append(None)
-    where = cols.index("reasons_2h")
+    where = cols.index(name)
     matched = 0
     for row in page["flights"]:
         key = tuple(row[i] for i in at)
@@ -146,6 +146,11 @@ def add_to_page(page, keys, reasons):
             row[where] = by_key[key]
             matched += 1
     return matched
+
+
+def add_to_page(page, keys, reasons):
+    """Add a reasons_2h column to the page data."""
+    return set_column(page, keys, reasons, "reasons_2h")
 
 
 def main():
@@ -156,6 +161,8 @@ def main():
     ap.add_argument("--show-pct", type=float, default=None, help="the --show-pct the page was built with")
     ap.add_argument("--method", choices=["shapley", "one-at-a-time"], default="shapley",
                     help="exact Shapley values (default; about 50 minutes for 23,000 flights) or one group at a time")
+    ap.add_argument("--chances-only", action="store_true",
+                    help="only update the page's 2-hour chances from the model, keeping its reasons")
     ap.add_argument("--from-saved", action="store_true", help=f"reuse {SAVED_MODEL.relative_to(ROOT)}")
     args = ap.parse_args()
     check_groups()
@@ -170,6 +177,16 @@ def main():
         joblib.dump((model, references, test), SAVED_MODEL)
 
     shown = build_web_page.flights_to_show(test, args.show_pct, args.seed)
+    page_file = ROOT / "docs" / "flights.json"
+    page = json.loads(page_file.read_text(encoding="utf-8"))
+    # The page's 2-hour chance must come from the same model as its reasons, or they won't add up
+    chances = [round(float(c), 3) for c in model.predict_proba(shown[FEATURES])[:, 1]]
+    matched = set_column(page, page_key(shown), chances, "risk_2h")
+    print(f"Updated the 2-hour chance for {matched:,} of {len(page['flights']):,} page flights")
+    if args.chances_only:
+        page_file.write_text(json.dumps(page, separators=(",", ":")), encoding="utf-8")
+        return
+
     if args.method == "shapley":
         # Shapley values add up exactly, so the page can say how far this flight is from an ordinary one
         pushes, baseline = shapley_pushes(model, shown, references)
@@ -183,8 +200,6 @@ def main():
     summary.round(4).to_csv(out / "flight_reasons.csv", index=False)
     print(summary.round(3).to_string(index=False))
 
-    page_file = ROOT / "docs" / "flights.json"
-    page = json.loads(page_file.read_text(encoding="utf-8"))
     matched = add_to_page(page, page_key(shown), top_reasons(pushes))
     # Tell the page which method made the reasons, and the ordinary flight's chance they start from
     page["summary"]["reasons_method"] = args.method
