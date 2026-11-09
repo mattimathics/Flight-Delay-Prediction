@@ -39,6 +39,8 @@ I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. My
 | Uses what's known that day | 1 hour before | 0.807 | 86.2% | 34.2% |
 | Leaky (told the departure delay) | After take-off | 0.998 | 100% | 39.7% |
 
+**How sure are these scores?** Rescoring on 1,000 resampled copies of the test flights moves each AUC by only about ±0.001, and every model beats the one above it in all 1,000 ([RESULTS.md Step 9](RESULTS.md#step-9-how-sure-are-these-scores-srcerror_barspy)).
+
 Every model except the benchmark is gradient boosting, trained on 8,477,419 flights (a 30% sample of 2004–2007) and tested on 695,298 flights (January–April 2008). The leaky row is the same rebuild given the departure delay, taxi and air time back.
 
 **The lesson:** always ask *when* each piece of information becomes known. A near-perfect score on a messy real-world problem is a warning sign, not a win.

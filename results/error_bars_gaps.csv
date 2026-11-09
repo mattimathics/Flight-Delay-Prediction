@@ -1,0 +1,6 @@
+comparison,auc_gap,gap_low,gap_high,share_of_resamples_better
+Weeks ahead (timetable only) vs Benchmark: route's past delay rate (no model),0.0648,0.0634,0.0661,1.0
+2 hours before vs Weeks ahead (timetable only),0.1106,0.1094,0.1118,1.0
+2 hours before vs 4 hours before,0.0579,0.057,0.0588,1.0
+1 hour before vs 2 hours before,0.0424,0.0417,0.0432,1.0
+2 hours before + weather vs 2 hours before,0.0286,0.0279,0.0293,1.0

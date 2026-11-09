@@ -1,0 +1,7 @@
+model,test_auc,auc_low,auc_high,late_rate_in_flagged,late_low,late_high,n_test,n_resamples
+Benchmark: route's past delay rate (no model),0.5889,0.5873,0.5904,0.3505,0.3471,0.354,695298,1000
+Weeks ahead (timetable only),0.6536,0.6522,0.655,0.4516,0.4482,0.4554,695298,1000
+4 hours before,0.7063,0.7049,0.7075,0.5936,0.59,0.5971,695298,1000
+2 hours before,0.7642,0.7628,0.7654,0.7341,0.7304,0.7378,695298,1000
+2 hours before + weather,0.7928,0.7915,0.794,0.7767,0.7734,0.7802,695298,1000
+1 hour before,0.8066,0.8054,0.8079,0.8617,0.8584,0.8648,695298,1000
