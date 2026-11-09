@@ -4,7 +4,7 @@
 
 **Can we predict a flight delay before the plane leaves, without cheating?**
 
-I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. My first model looked almost perfect, but it was secretly being given the answer. I found the leak, rebuilt the model honestly, and kept both results side by side.
+I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. My first model looked almost perfect, but it was secretly being given the answer. I found the leak, rebuilt it without the leak, and kept both results side by side.
 
 **[Try the live demo: pick a real 2008 flight and see what the model predicted](https://mattimathics.github.io/Flight-Delay-Prediction/)**
 
@@ -13,8 +13,8 @@ I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. My
 | | Result |
 |---|---|
 | First (leaky) model | AUC 0.93–0.98. Too good to be true: it used the departure delay, which is only known after take-off. |
-| Honest model, weeks ahead | AUC **0.654** from the timetable alone, beating a simple route-history benchmark (0.589). |
-| Honest model, 2 hours before departure | AUC **0.765**, or **0.793** with airport weather. |
+| Leak-free model, weeks ahead | AUC **0.654** from the timetable alone, beating a simple route-history benchmark (0.589). |
+| Leak-free model, 2 hours before departure | AUC **0.765**, or **0.793** with airport weather. |
 | What that buys an airline | 2 hours out, the riskiest 10% of flights are late **73.5%** of the time, against 25.2% of all 2008 flights. |
 | Best time to fly | The morning: 15.6% of flights are late, against 30.9% in the evening. |
 
@@ -27,7 +27,7 @@ I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. My
 1. **Too good to be true.** For my coursework I compared six models, from logistic regression to gradient boosting. All scored AUC 0.93–0.98, and the simplest did as well as the most complex. That was the clue.
 2. **Why.** The models were given the departure delay, taxi times and time in the air. None of these is known until the plane has left. A flight that leaves 40 minutes late will almost certainly arrive late. This is **target leakage**: giving a model information it would not have when it makes the prediction.
 3. **The fix.** I rebuilt the model with only what is known before departure: timetable, route, airline, distance, date and plane age. It learns from 2004–2007 and is tested on 2008, as a real forecast would be.
-4. **Then I improved it honestly.** I moved the prediction to 2 hours before departure and added only what has already happened by then, such as the plane's previous flight. An automated test changes everything after the cutoff and checks that no feature moves.
+4. **Then I improved it.** I moved the prediction to 2 hours before departure and added only what has already happened by then, such as the plane's previous flight. An automated test changes everything after the cutoff and checks that no feature moves.
 
 | Model | Predicts | AUC | Riskiest 10% that were late | Share of all late flights caught |
 |---|---|---|---|---|
