@@ -91,6 +91,10 @@
   .num { text-align: right; font-variant-numeric: tabular-nums; }
   ul { padding-left: 20px; margin: 4px 0 10px; }
   details p { margin: 10px 0 0; }
+  /* Always shown, but styled like the folded sections around it */
+  .over-time { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .over-time p { margin: 10px 0 0; }
+  .over-time .section-title { margin: 0; font-weight: 600; }
 
     /* "How good is it?": the warning list against any flight, a little wider labels */
   .bar-row.compare-row { grid-template-columns: 11rem 1fr 5.5rem; }
@@ -401,10 +405,10 @@ function showFlight(f) {
     <p class="judgement">${judgement(f, chosenTime)}</p>
     <p class="small" style="margin:6px 0 0">High risk = on the warning list (riskiest 1 in 10).</p>
     ${reasons(f)}
-    <details>
-      <summary>How it changed closer to take-off</summary>
+    <section class="over-time">
+      <p class="section-title">How it changed closer to take-off</p>
       ${barsOverTime(f)}
-    </details>
+    </section>
     <details>
       <summary>What does the model know?</summary>
       ${whatTheModelKnows(f)}
