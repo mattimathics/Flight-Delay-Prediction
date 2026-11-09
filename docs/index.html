@@ -74,7 +74,9 @@
   .reasons { margin: 14px 0 0; }
   .reasons p { margin: 0 0 6px; }
   .reasons ul { margin: 0 0 6px; padding-left: 0; list-style: none; }
-  .reasons li { margin: 4px 0; }
+  .reasons li { margin: 4px 0; display: flex; gap: 10px; }
+  .reasons .pts { flex: 0 0 auto; min-width: 3.2em; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .reasons li.total { border-top: 1px solid var(--line); padding-top: 6px; font-weight: 600; }
   .reasons .up { color: var(--late); }
   .reasons .down { color: var(--ok); }
   .judgement { margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--bg); font-weight: 600; }
@@ -351,19 +353,30 @@ const REASONS = {
 // "Why this chance?": the model's three biggest reasons, each with how far it moved the chance
 function reasons(f) {
   if (!f.reasons_2h || !f.reasons_2h.length) return "";
-  const items = f.reasons_2h.map(([group, points]) => {
-    const up = points > 0;
-    return `<li><span class="${up ? "up" : "down"}">${up ? "+" : "−"}${Math.abs(points)}</span> ${REASONS[group](f)}</li>`;
-  });
+  const line = (points, text, cls = "", row = "") =>
+    `<li class="${row}"><span class="pts ${cls}">${points}</span> <span>${text}</span></li>`;
+  const signed = points => points > 0 ? `+${points}` : `−${Math.abs(points)}`;
+  const items = f.reasons_2h.map(([group, points]) =>
+    line(signed(points), REASONS[group](f), points > 0 ? "up" : "down"));
   const note = chosenTime === "risk_2h" ? "" : " (2-hour prediction)";
-  // Shapley reasons add up to the gap from an ordinary flight; one-at-a-time reasons don't
-  const shapley = data.summary.reasons_method === "shapley";
-  const how = shapley
-    ? `Points added to an ordinary flight's ${percent(data.summary.ordinary_chance_2h)}; smaller ones not shown.`
-    : "Each measured on its own.";
+  // Shapley reasons add up to the gap from an ordinary flight, so the page can show the sum
+  if (data.summary.reasons_method !== "shapley") {
+    return `<div class="reasons"><p><strong>Why this chance?</strong>${note}</p>
+      <ul>${items.join("")}</ul>
+      <p class="small">Each measured on its own. Model reasons, not proven causes.</p></div>`;
+  }
+  const start = Math.round(data.summary.ordinary_chance_2h * 100);
+  const total = Math.round(f.risk_2h * 100);
+  // Whatever the three listed reasons don't explain comes from the smaller ones
+  const rest = total - start - f.reasons_2h.reduce((sum, [, points]) => sum + points, 0);
   return `<div class="reasons"><p><strong>Why this chance?</strong>${note}</p>
-    <ul>${items.join("")}</ul>
-    <p class="small">${how} Model reasons, not proven causes.</p></div>`;
+    <ul>
+      ${line(`${start}%`, "An ordinary flight")}
+      ${items.join("")}
+      ${rest ? line(signed(rest), "Smaller reasons together", rest > 0 ? "up" : "down") : ""}
+      ${line(`= ${chance(f.risk_2h)}`, "This flight's chance", "", "total")}
+    </ul>
+    <p class="small">Model reasons, not proven causes.</p></div>`;
 }
 
 // The whole "What does the model know?" section, for the prediction time the visitor picked
