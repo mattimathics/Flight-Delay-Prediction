@@ -14,13 +14,13 @@
   :root {
     --bg: #f4f6f9; --card: #ffffff; --text: #1a2130; --muted: #5d6573; --line: #e1e5eb;
     --accent: #1f5fa8; --accent-soft: #e3edf8;
-    --late: #b3261e; --late-soft: #fbe6e4; --ok: #1e7a3c; --ok-soft: #e2f3e7;
+    --late: #b3261e; --late-soft: #fbe6e4; --ok: #1e7a3c; --ok-soft: #e2f3e7; --mid: #c27a00;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #11141a; --card: #1a1f28; --text: #e8ebf0; --muted: #a2a9b5; --line: #2c3340;
       --accent: #7fb0eb; --accent-soft: #22344a;
-      --late: #f08a82; --late-soft: #452321; --ok: #7fd197; --ok-soft: #1e3827;
+      --late: #f08a82; --late-soft: #452321; --ok: #7fd197; --ok-soft: #1e3827; --mid: #e3a94f;
     }
   }
   * { box-sizing: border-box; }
@@ -76,6 +76,17 @@
   .judgement { margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--bg); font-weight: 600; }
   details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
   summary { cursor: pointer; font-weight: 600; }
+  .time-row { display: grid; grid-template-columns: 7rem 1fr 4.5rem; white-space: nowrap; gap: 10px; align-items: center;
+              margin-top: 6px; padding: 6px 8px; border-radius: 8px; }
+  .time-row.chosen { background: var(--accent-soft); font-weight: 600; }
+  .time-track { position: relative; background: var(--line); border-radius: 999px; height: 14px; }
+  .time-fill { height: 100%; border-radius: 999px; }
+  .time-fill.high { background: var(--late); }
+  .time-fill.medium { background: var(--mid); }
+  .time-fill.low { background: var(--ok); }
+  .mid-text { color: var(--mid); }
+  .time-average { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); opacity: 0.6; }
+  .average-key { display: inline-block; width: 2px; height: 12px; background: var(--text); opacity: 0.6; vertical-align: middle; }
   .bar-row { display: grid; grid-template-columns: 9rem 1fr 3rem; gap: 10px; align-items: center; margin-top: 8px; }
   .bar-track { background: var(--line); border-radius: 6px; height: 12px; overflow: hidden; }
   .bar-fill { background: var(--accent); height: 100%; }
@@ -97,6 +108,7 @@
     .search, .answer { grid-template-columns: 1fr; }
     .bar-row.compare-row { grid-template-columns: 8.5rem 1fr 5rem; }
     .bar-row { grid-template-columns: 7.5rem 1fr 2.5rem; }
+    .time-row { grid-template-columns: 6.9rem 1fr 4.2rem; gap: 8px; padding: 6px; }
   }
 </style>
 </head>
@@ -414,12 +426,23 @@ const TIPS = {
   low: "Likely on time.",
 };
 
-// One bar per prediction time, skipping any the data file doesn't have
+// One bar per prediction time, skipping any the data file doesn't have.
+// Bars take the risk colour, and a line marks the average flight so each bar has something to compare with.
 function barsOverTime(f) {
-  return TIMES.filter(([field]) => f[field] !== null && f[field] !== undefined).map(([field, label]) => `
-    <div class="bar-row" style="${field === chosenTime ? "font-weight:600" : ""}"><span>${label}</span>
-      <div class="bar-track"><div class="bar-fill" style="width:${percent(f[field])}"></div></div>
+  const times = TIMES.filter(([field]) => f[field] !== null && f[field] !== undefined);
+  const first = f[times[0][0]], last = f[times[times.length - 1][0]];
+  const change = Math.round((last - first) * 100);
+  const trend = Math.abs(change) < 3 ? `It stayed about the same, at around ${chance(last)}.`
+    : `It went ${change > 0 ? "up" : "down"} from ${chance(first)} ${times[0][1].toLowerCase()} to ${chance(last)} ${times[times.length - 1][1].toLowerCase()}.`;
+  const average = percent(data.summary.late_overall);
+  const rows = times.map(([field, label]) => `
+    <div class="time-row${field === chosenTime ? " chosen" : ""}"><span>${label.replace(" hours", " h").replace(" hour", " h")}</span>
+      <div class="time-track"><div class="time-fill ${riskLevel(f, field)}" style="width:${percent(f[field])}"></div>
+        <div class="time-average" style="left:${average}"></div></div>
       <span class="num">${chance(f[field])}</span></div>`).join("");
+  return `<p>${trend}</p>${rows}
+    <p class="small"><span class="average-key"></span> Average flight (${average}) ·
+      Colours: <span class="higher">high</span>, <span class="mid-text">medium</span>, <span class="lower">low</span> risk</p>`;
 }
 
 function showFlight(f) {
@@ -455,7 +478,7 @@ function showFlight(f) {
     <p class="small" style="margin:6px 0 0">High risk = on the warning list (riskiest 1 in 10).</p>
     ${reasons(f)}
     <details>
-      <summary>Did the warning change closer to take-off?</summary>
+      <summary>How it changed closer to take-off</summary>
       ${barsOverTime(f)}
     </details>
     <details>
