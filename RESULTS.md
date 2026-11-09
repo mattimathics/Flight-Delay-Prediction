@@ -234,6 +234,29 @@ Every score above comes from one test set. A different set of flights would give
 - **A fresh retrain scored slightly lower.** This script retrains every model from scratch, with unchanged code. The retrained models score up to 0.0004 lower than in the tables above (the 2-hour model 0.7642 against 0.7645), and their riskiest-10% late rates up to 0.2 points lower (the 2-hour model 73.4% against 73.5%). Training itself is repeatable: retraining the timetable model twice gave identical predictions, matching this run's 0.6536. The database (unchanged since 11 October), package versions and model code are the same as for the published October runs, so the difference comes from something in those runs that I can't reconstruct now. The gap is a quarter of the error bar, so the other tables keep their original numbers; rerunning every script from the current code would move them by at most 0.001.
 - **What this does not cover:** a different year or season. The ranges say how sure the scores are for January–April 2008, not for summer or for today.
 
+## Why was this flight flagged? (`src/explain_flights.py`)
+
+The demo shows each listed flight's biggest reasons for its 2-hour chance of delay. For each flight, one group of facts at a time (the plane flying in, the airport's delays so far today, the time of day, the route, the airline, ...) is swapped for the values of 20 ordinary training flights, and the flight is rescored. How far the chance moves is that group's push. The page shows the three biggest pushes of at least 1 point. This needs no extra package: it only uses the model's own predictions. Each push is measured on its own, so they don't add up to the chance: when almost every fact points to a delay, removing any single one changes little.
+
+Across the 23,363 flights on the page (2-hour model, retrained on the 30% sample):
+
+| Group | Biggest reason for | Average push (points out of 100) | Raises the chance for |
+|---|---|---|---|
+| The plane flying in | 51.8% of flights | 12.7 | 24.9% of flights |
+| Time of day | 15.1% | 4.6 | 50.0% |
+| Departure airport's delays so far today | 11.0% | 6.2 | 45.5% |
+| Route and its airports | 10.0% | 5.4 | 53.2% |
+| Airline | 7.7% | 3.8 | 42.1% |
+| Flight length | 2.8% | 1.9 | 49.7% |
+| Month and day of the week | 0.9% | 2.1 | 53.6% |
+| Flights scheduled in the same hour | 0.8% | 2.3 | 52.0% |
+| Plane age | 0.02% | 0.8 | 56.9% |
+
+- **The plane flying in matters most, mostly as good news.** For 3 in 4 flights it lowers the chance, because the incoming plane is on time.
+- **Not knowing can raise the chance too.** If the plane's previous flight hasn't taken off 2 hours before departure, it is usually still on an earlier leg, so the turnaround will be tight. Nothing from after the cutoff is used.
+- **Plane age barely matters**, as in "What drives the predictions".
+- **These are the model's reasons, not causes.** (`results/flight_reasons.csv`)
+
 ## The timetable model in practice
 
 AUC is hard to act on, so `src/practical_value.py` asks what an airline would get from the **timetable model** (AUC 0.654), the one usable weeks ahead.
@@ -333,7 +356,7 @@ The **precision-recall curve** draws that whole trade-off. Moving right, more la
 
 - Retrain and test on recent data, including summer.
 - Predict cancellations too.
-- Explain each single prediction, so an operations team can see *why* a flight was flagged.
+- Check the per-flight reasons against a standard method such as SHAP.
 
 ## Run every script
 
@@ -353,6 +376,7 @@ python src/download_weather.py --db data/Fly.db          # about 230 MB into dat
 python src/model_weather.py --db data/Fly.db             # 2-hour model with and without weather
 python src/error_bars.py --db data/Fly.db --weather data/weather  # 95% ranges for every score; about 6 hours at --pct 30
 python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
+python src/explain_flights.py --db data/Fly.db --show-pct 1  # adds each listed flight's reasons to docs/flights.json
 python src/airport_encoding.py --db data/Fly.db          # airports as categories vs past delay rates
 python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
 python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
