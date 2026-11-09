@@ -364,8 +364,8 @@ function reasons(f) {
   // Shapley reasons add up to the gap from an ordinary flight; one-at-a-time reasons don't
   const shapley = data.summary.reasons_method === "shapley";
   const how = shapley
-    ? `Together with smaller factors, they add up to the gap between this flight and an ordinary flight
-       (about ${percent(data.summary.ordinary_chance_2h)}).`
+    ? `An ordinary flight has about a ${percent(data.summary.ordinary_chance_2h)} chance. These reasons, plus
+       smaller ones not shown, add up to the rest of the way to this flight's ${percent(f.risk_2h)}.`
     : "Each reason is measured on its own, so they don't add up to the chance.";
   return `<div class="reasons"><p><strong>Why this chance?</strong> The biggest ${items.length === 1 ? "reason" : "reasons"}, compared with an ordinary flight:</p>
     <ul>${items.join("")}</ul>
