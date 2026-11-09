@@ -63,7 +63,7 @@ For my coursework I compared six models: logistic regression, penalised logistic
 - A flight that leaves 40 minutes late will almost certainly arrive late, so the model was partly being told the answer. This is **target leakage**.
 - **The clue:** even the simplest model did as well as the most complex one.
 
-### Step 3: the honest version (`src/model_v2.py`)
+### Step 3: the leak-free version (`src/model_v2.py`)
 
 Only what is known before departure: scheduled departure and arrival times, route, airline, distance, month, day of the week and plane age. The leaky version is kept alongside to show the gap.
 
@@ -82,7 +82,7 @@ Only what is known before departure: scheduled departure and arrival times, rout
 - **How the samples work:** each is a fixed share of all flights, picked the same way every time (`python src/model_v2.py --pct 30`). All three runs are in `results/model_comparison_v2_by_sample.csv`. The 30% run peaked at 14.7 GB of memory and took about 8 minutes.
 - **Earlier numbers retired:** an older version of this README said 0.627, 0.641 and 0.997. Those came from a random sample that could not be repeated.
 
-### Step 4: can the honest model do better? (`src/model_v3.py`)
+### Step 4: can the leak-free model do better? (`src/model_v3.py`)
 
 I added two things an airline knows before departure:
 
@@ -185,7 +185,7 @@ The same model with the cutoff at 4, 2 and 1 hours before departure. Later cutof
 
 - **Every hour closer adds accuracy**, mostly because more incoming planes have taken off (12.6% of flights at 4 hours, 74.1% at 1 hour).
 - **The trade-off:** wait longer and the warning is more accurate, but there's less time to act. 1 hour out, 86% of flagged flights are late, but there may be no spare crew left.
-- **Even 1 hour out, the honest model (0.807) is far from the leaky one (0.998).** That gap is what being told the answer is worth.
+- **Even 1 hour out, the leak-free model (0.807) is far from the leaky one (0.998).** That gap is what being told the answer is worth.
 
 ### Step 8: adding the weather (`src/download_weather.py`, `src/model_weather.py`)
 
@@ -384,7 +384,7 @@ Every script uses a 1% sample by default (minutes). The numbers here come from `
 ```bash
 pip install -r requirements.txt                          # the exact versions used (Python 3.13)
 jupyter notebook notebooks/flight_delay_analysis.ipynb   # builds data/Fly.db (set FLY_DATA_DIR to build it elsewhere); about 30 minutes
-python src/model_v2.py --db data/Fly.db                  # honest timetable model; same --pct and --seed give the same sample
+python src/model_v2.py --db data/Fly.db                  # leak-free timetable model; same --pct and --seed give the same sample
 python src/model_v3.py --db data/Fly.db                  # airport busyness, route history, benchmark, riskiest-10% chart
 python src/model_v4.py --db data/Fly.db                  # 2 hours before departure
 python src/check_probabilities.py --db data/Fly.db       # can the percentages be trusted? which alert level?
