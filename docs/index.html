@@ -71,6 +71,12 @@
   .risk.high { background: var(--late-soft); color: var(--late); }
   .risk.low { background: var(--ok-soft); color: var(--ok); }
   .medium { color: var(--text); }
+  .reasons { margin: 14px 0 0; }
+  .reasons p { margin: 0 0 6px; }
+  .reasons ul { margin: 0 0 6px; padding-left: 0; list-style: none; }
+  .reasons li { margin: 4px 0; }
+  .reasons .up { color: var(--late); }
+  .reasons .down { color: var(--ok); }
   .judgement { margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--bg); font-weight: 600; }
   details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
   summary { cursor: pointer; font-weight: 600; }
@@ -328,6 +334,38 @@ function factsAtTwoHours(f) {
   return facts;
 }
 
+// Words for each group of facts in docs/flights.json's reasons_2h (src/explain_flights.py),
+// using this flight's own details where the page has them
+const REASONS = {
+  plane: f => f.turnaround_minutes === null ? "The plane (no earlier flight found for it that day)"
+    : f.previous_flight_delay === null ? "The plane flying in (its previous flight hadn't taken off yet)"
+    : f.previous_flight_delay > 0 ? `The plane flying in (its previous flight took off ${duration(f.previous_flight_delay)} late)`
+    : "The plane flying in (its previous flight took off on time)",
+  airport_today: f => f.airport_late_share === null ? `Delays at ${place(f.origin)} today (no flights had left yet)`
+    : `Delays at ${place(f.origin)} today (${percent(f.airport_late_share)} of flights in the last 3 hours left late)`,
+  time: f => `The time of day (it leaves at ${clock(f.scheduled_departure)})`,
+  date: f => `The date (${niceDate(f.date)})`,
+  airline: f => `The airline (${shortName(data.carriers[f.carrier])})`,
+  route: f => "The route and its airports' track record",
+  busyness: f => "How many other flights are scheduled at the same hour",
+  length: f => "How long the flight is",
+  plane_age: f => "The plane's age",
+};
+
+// "Why this chance?": the model's three biggest reasons, each with how far it moved the chance
+function reasons(f) {
+  if (!f.reasons_2h || !f.reasons_2h.length) return "";
+  const items = f.reasons_2h.map(([group, points]) => {
+    const up = points > 0;
+    return `<li><span class="${up ? "up" : "down"}">${up ? "▲" : "▼"}</span> ${REASONS[group](f)}:
+      ${up ? "raises" : "lowers"} the chance by about ${Math.abs(points)} point${Math.abs(points) === 1 ? "" : "s"}</li>`;
+  });
+  const note = chosenTime === "risk_2h" ? "" : " These are for the 2-hour prediction.";
+  return `<div class="reasons"><p><strong>Why this chance?</strong> The biggest reasons, compared with an ordinary flight:</p>
+    <ul>${items.join("")}</ul>
+    <p class="small">These are what the model weighed, not proof of what caused a delay.${note}</p></div>`;
+}
+
 // The whole "What does the model know?" section, for the prediction time the visitor picked
 function whatTheModelKnows(f) {
   const label = TIMES.find(([field]) => field === chosenTime)[1].toLowerCase();
@@ -422,6 +460,7 @@ function showFlight(f) {
     <p class="judgement">${judgement(f, chosenTime)}</p>
     <p class="small" style="margin:6px 0 0">High risk means the flight is on the model's warning list: its
       riskiest 1 in 10 flights at this time. Low risk means below the average flight.</p>
+    ${reasons(f)}
     <details>
       <summary>Did the warning change closer to take-off?</summary>
       <p class="small" style="margin:8px 0 0">The model checked this flight again as news came in, such as
