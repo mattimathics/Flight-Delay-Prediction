@@ -85,8 +85,6 @@
   .time-fill.medium { background: var(--mid); }
   .time-fill.low { background: var(--ok); }
   .mid-text { color: var(--mid); }
-  .time-average { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--text); opacity: 0.6; }
-  .average-key { display: inline-block; width: 2px; height: 12px; background: var(--text); opacity: 0.6; vertical-align: middle; }
   .bar-row { display: grid; grid-template-columns: 9rem 1fr 3rem; gap: 10px; align-items: center; margin-top: 8px; }
   .bar-track { background: var(--line); border-radius: 6px; height: 12px; overflow: hidden; }
   .bar-fill { background: var(--accent); height: 100%; }
@@ -223,27 +221,6 @@ function duration(minutes) {
   return hours === 0 ? `${rest} min` : `${hours} h${rest ? ` ${rest} min` : ""}`;
 }
 
-// "visibility 10 miles; wind 14 knots, gusting 23; no thunderstorm, snow or fog"
-//   -> "clear, moderate wind with gusts". Thresholds: wind under 10 knots is light, over 20 strong;
-//   visibility 5+ miles is clear, under 1 mile foggy.
-function plainWeather(report) {
-  const parts = [];
-  const visibility = report.match(/visibility ([\d.]+) miles/);
-  if (visibility) {
-    const miles = parseFloat(visibility[1]);
-    parts.push(miles >= 5 ? "clear" : miles >= 1 ? "hazy" : "foggy");
-  }
-  const wind = report.match(/wind ([\d.]+) knots(, gusting)?/);
-  if (wind) {
-    const knots = parseFloat(wind[1]);
-    const strength = knots < 10 ? "light" : knots <= 20 ? "moderate" : "strong";
-    parts.push(`${strength} wind${wind[2] ? " with gusts" : ""}`);
-  }
-  const reported = report.match(/; ([a-z ]+) reported$/);
-  if (reported) parts.push(reported[1]);
-  return parts.join(", ");
-}
-
 // "American Eagle Airlines Inc." -> "American Eagle Airlines", since shorter names read better
 function shortName(name) {
   return name.replace(/\s*\(.*$/, "").replace(/,?\s+(Inc|Co|Corporation|Corp)\.?$/i, "").trim();
@@ -296,48 +273,6 @@ function fillFlights() {
     `${shortName(data.carriers[f.carrier])} ${f.flight_number}</option>`).join("");
 }
 
-// What every model knows: the timetable, all fixed weeks in advance
-const TIMETABLE = [
-  "The route and the airline",
-  "The scheduled departure and arrival times, the day of the week and the month",
-  "The flight's length and distance, and the plane's age",
-  "How busy both airports are scheduled to be at that hour",
-  "How often this route was late in 2004–2007",
-];
-
-// What the 4-, 2- and 1-hour models add: only what has already happened that day
-const SAME_DAY = [
-  "How many flights from the same airport left 15+ minutes late in the 3 hours before the prediction",
-  "When the plane is scheduled to land from its previous flight, and how late that flight took off, if it already has",
-];
-
-function list(items) {
-  return `<ul>${items.map(t => `<li>${t}</li>`).join("")}</ul>`;
-}
-
-// Plain-English facts saved for this flight at the 2-hour mark
-function factsAtTwoHours(f) {
-  const facts = [];
-  facts.push(f.airport_late_share === null
-    ? `No earlier flights had left ${place(f.origin)} that day yet.`
-    : `${percent(f.airport_late_share)} of flights leaving ${place(f.origin)} in the previous 3 hours had left 15+ minutes late.`);
-  if (f.turnaround_minutes === null) {
-    facts.push("This plane's previous flight that day wasn't found.");
-  } else if (f.previous_flight_delay === null) {
-    facts.push(`The plane was scheduled to land here ${duration(f.turnaround_minutes)} before departure; its previous flight hadn't taken off yet.`);
-  } else {
-    facts.push(`The plane was scheduled to land here ${duration(f.turnaround_minutes)} before departure; its previous flight ` +
-      (f.previous_flight_delay > 0 ? `took off ${duration(f.previous_flight_delay)} late.` : "took off on time."));
-  }
-  // Only a separate "with weather" version of the 2-hour model uses these reports
-  const weather = [[f.origin, f.origin_weather], [f.dest, f.dest_weather]].filter(([, report]) => report)
-    .map(([code, report]) => `${place(code)}: ${plainWeather(report)}`);
-  if (weather.length) {
-    facts.push(`Weather at ${weather.join(". At ")}. <span class="small">(not used by this prediction)</span>`);
-  }
-  return facts;
-}
-
 // Words for each group of facts in docs/flights.json's reasons_2h (src/explain_flights.py),
 // using this flight's own details where the page has them
 const REASONS = {
@@ -374,21 +309,14 @@ function reasons(f) {
     <p class="small">What the model weighed most, not proven causes.</p></div>`;
 }
 
-// The whole "What does the model know?" section, for the prediction time the visitor picked
+// "What does the model know?": in two short lines, for the prediction time the visitor picked
 function whatTheModelKnows(f) {
-  const label = TIMES.find(([field]) => field === chosenTime)[1].toLowerCase();
-  const weeks = chosenTime === "risk_weeks";
-  const general = weeks
-    ? `<p><strong>Weeks before, it only knows the timetable:</strong></p>${list(TIMETABLE)}
-       <p class="small">Predict closer to departure and it also learns what has happened that day:</p>${list(SAME_DAY)}`
-    : `<p><strong>${label[0].toUpperCase() + label.slice(1)} departure, it knows the timetable:</strong></p>${list(TIMETABLE)}
-       <p><strong>plus what has already happened that day:</strong></p>${list(SAME_DAY)}`;
-  const thisFlight = chosenTime === "risk_2h"
-    ? "<p><strong>For this flight, that meant:</strong></p>"
-    : "<p><strong>For this flight, 2 hours before departure</strong> (details are only saved for that time):</p>";
-  return `${general}
-    <p class="small">It never sees anything that happens after the prediction is made.</p>
-    ${thisFlight}${list(factsAtTwoHours(f))}`;
+  const timetable = "The timetable, such as the route, airline, date, departure time and how often this route was late before.";
+  const sameDay = "What has happened that day: how late the plane flying in is, and how many flights have left the airport late.";
+  const known = chosenTime === "risk_weeks"
+    ? `<p>${timetable}</p><p class="small">Closer to take-off, the other models also learn what has happened that day.</p>`
+    : `<p>${timetable}</p><p>${sameDay}</p>`;
+  return `${known}<p class="small">Never anything after the prediction is made.</p>`;
 }
 
 // The lowest chance that still makes each time's warning list (its riskiest 1 in 10 listed flights)
@@ -426,23 +354,19 @@ const TIPS = {
   low: "Likely on time.",
 };
 
-// One bar per prediction time, skipping any the data file doesn't have.
-// Bars take the risk colour, and a line marks the average flight so each bar has something to compare with.
+// One bar per prediction time, skipping any the data file doesn't have; bars take the risk colour
 function barsOverTime(f) {
   const times = TIMES.filter(([field]) => f[field] !== null && f[field] !== undefined);
   const first = f[times[0][0]], last = f[times[times.length - 1][0]];
   const change = Math.round((last - first) * 100);
   const trend = Math.abs(change) < 3 ? `It stayed about the same, at around ${chance(last)}.`
     : `It went ${change > 0 ? "up" : "down"} from ${chance(first)} ${times[0][1].toLowerCase()} to ${chance(last)} ${times[times.length - 1][1].toLowerCase()}.`;
-  const average = percent(data.summary.late_overall);
   const rows = times.map(([field, label]) => `
     <div class="time-row${field === chosenTime ? " chosen" : ""}"><span>${label.replace(" hours", " h").replace(" hour", " h")}</span>
-      <div class="time-track"><div class="time-fill ${riskLevel(f, field)}" style="width:${percent(f[field])}"></div>
-        <div class="time-average" style="left:${average}"></div></div>
+      <div class="time-track"><div class="time-fill ${riskLevel(f, field)}" style="width:${percent(f[field])}"></div></div>
       <span class="num">${chance(f[field])}</span></div>`).join("");
   return `<p>${trend}</p>${rows}
-    <p class="small"><span class="average-key"></span> Average flight (${average}) ·
-      Colours: <span class="higher">high</span>, <span class="mid-text">medium</span>, <span class="lower">low</span> risk</p>`;
+    <p class="small">Colours: <span class="higher">high</span>, <span class="mid-text">medium</span>, <span class="lower">low</span> risk</p>`;
 }
 
 function showFlight(f) {
