@@ -558,7 +558,8 @@ function fillStats() {
 // Say plainly that the flight list is a sample, and how often the risky flights really were late
 function fillSampleNote() {
   document.getElementById("sample-hint").textContent =
-    `Lists 1 in 30 of the ${data.summary.flights.toLocaleString("en-GB")} test flights; results below use all of them.`;
+    `You can pick from ${flights.length.toLocaleString("en-GB")} sample flights. The scores below were tested on all ` +
+    `${data.summary.flights.toLocaleString("en-GB")}.`;
 }
 
 fetch("flights.json")
