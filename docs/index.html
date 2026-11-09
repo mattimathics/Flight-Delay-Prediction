@@ -108,10 +108,8 @@
 <body>
 <main>
   <h1>Will this flight be late?</h1>
-  <p class="lead">Pick a real US flight from January to April 2008. See the chance my model gave it of arriving
-    15+ minutes late, then what really happened. The model only learned from 2004–2007 flights.</p>
-  <p class="small">Why 2008? The project uses a well-known public dataset of 31 million US flights from
-    2004–2008. To use it for today's flights, the model would first be retrained on recent data.</p>
+  <p class="lead">Pick a real 2008 US flight. See the model's chance it would arrive 15+ minutes late, and what
+    really happened.</p>
 
   <section class="card">
     <div class="search">
@@ -140,8 +138,7 @@
 
   <section class="card">
     <h2>How good is it?</h2>
-    <p>Each day, the model makes a <strong>warning list</strong>: the 1 in 10 flights it thinks are most
-      likely to be late. How many of those really were late?</p>
+    <p>Each day the model puts its riskiest 1 in 10 flights on a <strong>warning list</strong>. How many were late?</p>
     <div id="compare"></div>
     <p id="headline" style="font-size:1.1rem;margin-top:12px"></p>
     <p id="misses"></p>
@@ -154,9 +151,6 @@
           <tbody id="table"></tbody>
         </table>
       </div>
-      <p class="small" style="margin-top:10px">The closer to departure, the more the model knows, such as
-        whether the plane flying in is already late, so its list gets more accurate. "With weather" also uses
-        the last airport weather report before the 2-hour mark.</p>
       <p class="small" id="technical"></p>
     </details>
   </section>
@@ -165,7 +159,7 @@
     <p>Built by Matthew James Tan ·
       <a href="https://github.com/mattimathics/Flight-Delay-Prediction">Code and full results on GitHub</a> ·
       <a href="https://www.linkedin.com/in/matthew-james-tan-461b98398">LinkedIn</a> ·
-      Data: ASA Data Expo 2009</p>
+      Data: ASA Data Expo 2009 (US flights 2004–2008)</p>
   </footer>
 </main>
 
@@ -173,10 +167,10 @@
 // Each prediction time: the flight field holding its chance of delay, its short label,
 // and how the answer card describes it. Only these four exist because only these models were trained.
 const TIMES = [
-  ["risk_weeks", "Weeks before", "Predicted weeks before departure, from the timetable only."],
-  ["risk_4h", "4 hours before", "Predicted 4 hours before departure."],
-  ["risk_2h", "2 hours before", "Predicted 2 hours before departure."],
-  ["risk_1h", "1 hour before", "Predicted 1 hour before departure."],
+  ["risk_weeks", "Weeks before"],
+  ["risk_4h", "4 hours before"],
+  ["risk_2h", "2 hours before"],
+  ["risk_1h", "1 hour before"],
 ];
 // The headline prediction: 2 hours before departure, the same model the README leads with
 const MAIN = "risk_2h";
@@ -204,11 +198,6 @@ function niceDate(iso) {
 // 0.734 -> "73%"
 function percent(share) {
   return Math.round(share * 100) + "%";
-}
-
-// 0.735 -> "73.5%", for headline results, so they read exactly as in the README
-function exactPercent(share) {
-  return (share * 100).toFixed(1) + "%";
 }
 
 // 688 -> "11 h 28 min", 45 -> "45 min", since nobody converts big minute counts in their head
@@ -328,8 +317,7 @@ function factsAtTwoHours(f) {
   const weather = [[f.origin, f.origin_weather], [f.dest, f.dest_weather]].filter(([, report]) => report)
     .map(([code, report]) => `${place(code)}: ${plainWeather(report)}`);
   if (weather.length) {
-    facts.push(`Weather at ${weather.join(". At ")}. <span class="small">(Shown for interest: this prediction ` +
-      `did not use weather. A separate weather version of the 2-hour model does.)</span>`);
+    facts.push(`Weather at ${weather.join(". At ")}. <span class="small">(not used by this prediction)</span>`);
   }
   return facts;
 }
@@ -357,19 +345,17 @@ function reasons(f) {
   if (!f.reasons_2h || !f.reasons_2h.length) return "";
   const items = f.reasons_2h.map(([group, points]) => {
     const up = points > 0;
-    return `<li><span class="${up ? "up" : "down"}">${up ? "▲" : "▼"}</span> ${REASONS[group](f)}:
-      ${up ? "raises" : "lowers"} the chance by about ${Math.abs(points)} point${Math.abs(points) === 1 ? "" : "s"}</li>`;
+    return `<li><span class="${up ? "up" : "down"}">${up ? "+" : "−"}${Math.abs(points)}</span> ${REASONS[group](f)}</li>`;
   });
-  const note = chosenTime === "risk_2h" ? "" : " These are for the 2-hour prediction.";
+  const note = chosenTime === "risk_2h" ? "" : " (2-hour prediction)";
   // Shapley reasons add up to the gap from an ordinary flight; one-at-a-time reasons don't
   const shapley = data.summary.reasons_method === "shapley";
   const how = shapley
-    ? `An ordinary flight has about a ${percent(data.summary.ordinary_chance_2h)} chance. These reasons, plus
-       smaller ones not shown, add up to the rest of the way to this flight's ${percent(f.risk_2h)}.`
-    : "Each reason is measured on its own, so they don't add up to the chance.";
-  return `<div class="reasons"><p><strong>Why this chance?</strong> The biggest ${items.length === 1 ? "reason" : "reasons"}, compared with an ordinary flight:</p>
+    ? `Points added to an ordinary flight's ${percent(data.summary.ordinary_chance_2h)}; smaller ones not shown.`
+    : "Each measured on its own.";
+  return `<div class="reasons"><p><strong>Why this chance?</strong>${note}</p>
     <ul>${items.join("")}</ul>
-    <p class="small">${how} They are what the model weighed, not proof of what caused a delay.${note}</p></div>`;
+    <p class="small">${how} Model reasons, not proven causes.</p></div>`;
 }
 
 // The whole "What does the model know?" section, for the prediction time the visitor picked
@@ -411,16 +397,16 @@ function riskLevel(f, field) {
 // Was the model right? Judged by the warning list, the same yardstick as the results
 function judgement(f, field) {
   const warned = onWarningList(f, field);
-  if (warned && f.late) return "✓ Caught it: it was on the warning list, and it was late.";
-  if (warned) return "✗ False alarm: it was on the warning list, but it was on time.";
-  if (f.late) return "✗ Missed: it wasn't on the warning list, but it was late.";
-  return "✓ Correctly calm: it wasn't on the warning list, and it was on time.";
+  if (warned && f.late) return "✓ Caught it: warned, and it was late.";
+  if (warned) return "✗ False alarm: warned, but it was on time.";
+  if (f.late) return "✗ Missed: not warned, but it was late.";
+  return "✓ Correctly calm: not warned, and it was on time.";
 }
 
 // Common-sense advice for each risk level (general advice, not a measured result)
 const TIPS = {
-  high: "Tip: allow extra time for connections, or pick an earlier flight.",
-  medium: "Tip: worth a little extra time if your connection is tight.",
+  high: "Allow extra time for connections.",
+  medium: "Allow a little extra time if your connection is tight.",
   low: "Likely on time.",
 };
 
@@ -436,7 +422,6 @@ function showFlight(f) {
   shownFlight = f;
   const average = data.summary.late_overall;
   const level = riskLevel(f, chosenTime);
-  const when = TIMES.find(([field]) => field === chosenTime)[2];
   const verdict = f.late
     ? `<span class="verdict late">Late by ${duration(f.arrival_delay)}</span>`
     : `<span class="verdict ok">On time</span>`;
@@ -452,8 +437,7 @@ function showFlight(f) {
         <div class="small">Chance of arriving 15+ min late</div>
         <div class="big ${{high: "higher", medium: "medium", low: "lower"}[level]}">${percent(f[chosenTime])}</div>
         <span class="risk ${level}">${level[0].toUpperCase() + level.slice(1)} risk</span>
-        <div class="small">Out of 100 flights like this one, about ${per100(f[chosenTime])} would arrive late
-          (the average flight: ${percent(average)}). ${when}</div>
+        <div class="small">About ${per100(f[chosenTime])} in 100 flights like this arrive late (average: ${per100(average)}).</div>
         <div class="small" style="margin-top:6px"><strong>${TIPS[level]}</strong></div>
       </div>
       <div class="box">
@@ -464,14 +448,10 @@ function showFlight(f) {
       </div>
     </div>
     <p class="judgement">${judgement(f, chosenTime)}</p>
-    <p class="small" style="margin:6px 0 0">High risk means the flight is on the model's warning list: its
-      riskiest 1 in 10 flights at this time. Low risk means below the average flight.</p>
+    <p class="small" style="margin:6px 0 0">High risk = on the warning list (riskiest 1 in 10).</p>
     ${reasons(f)}
     <details>
       <summary>Did the warning change closer to take-off?</summary>
-      <p class="small" style="margin:8px 0 0">The model checked this flight again as news came in, such as
-        the plane flying in running late. More news usually means a better guess, and it can lower the
-        chance too: if the plane flying in takes off on time, the risk falls.</p>
       ${barsOverTime(f)}
     </details>
     <details>
@@ -532,10 +512,9 @@ function fillHonestNote() {
   const twoHours = s.by_time.find(row => row.prediction_time === "2 hours before");
   const timesBetter = Math.round(twoHours.late_in_riskiest_10pct / s.late_overall);
   document.getElementById("honest").textContent =
-    `My first model looked almost perfect, but it was cheating: it was secretly told how late each flight ` +
-    `had taken off, which nobody knows until after departure. I removed everything known only after take-off. ` +
-    `The honest model is less impressive but real: its warning list spots late flights about ${timesBetter} times ` +
-    `as often as guessing, and every prediction on this page uses only what was known at the time.`;
+    `My first model looked almost perfect because it was secretly told how late each flight took off, ` +
+    `which nobody knows before departure. This honest version uses only what was known at the time, ` +
+    `and still finds late flights about ${timesBetter} times as often as guessing.`;
 }
 
 // 0.735 -> "74", for "about 74 in every 100" sentences
@@ -558,16 +537,13 @@ function fillStats() {
       <span class="num">${per100(share)} in 100</span></div>`).join("");
   // How many times better than chance: 0.735 / 0.252 is about 3
   document.getElementById("headline").innerHTML =
-    `So its warning list finds late flights about <strong>${Math.round(warned / average)} times</strong> as often ` +
-    `as picking flights at random.`;
+    `About <strong>${Math.round(warned / average)} times</strong> better than guessing.`;
   // What the list misses: 0.292 of late flights make it; a list of 1 in 10 could hold at most 0.1 / 0.252
   document.getElementById("misses").textContent =
-    `It doesn't catch every delay: about ${Math.round(s.late_caught_2h * 10)} in 10 late flights make its list. ` +
-    `Even a perfect list of 1 in 10 flights could hold at most ${Math.round(0.1 / average * 10)} in 10 of them, ` +
-    `because about 1 in ${Math.round(1 / average)} flights is late.`;
+    `It catches about ${Math.round(s.late_caught_2h * 10)} in 10 late flights; a list this size could hold ` +
+    `at most ${Math.round(0.1 / average * 10)} in 10.`;
   document.getElementById("tested").textContent =
-    `Warning list made 2 hours before departure. Tested on ${s.flights.toLocaleString("en-GB")} flights ` +
-    `from January to April 2008 that the model never saw.`;
+    `2 hours before departure, on ${s.flights.toLocaleString("en-GB")} unseen flights (Jan–Apr 2008).`;
   // One row per prediction time, then flights picked at random for comparison
   document.getElementById("table").innerHTML = s.by_time.map(row => `
     <tr><td>${row.prediction_time.replace("+ weather", "with weather").replace("Weeks ahead", "Weeks before")}</td>
@@ -575,19 +551,14 @@ function fillStats() {
     `<tr><td>Flights picked at random</td><td>About ${per100(average)}</td></tr>`;
   // The exact technical scores, for readers who want them
   document.getElementById("technical").textContent =
-    `For data scientists: AUC ${s.by_time.map(row => `${row.auc.toFixed(3)} (${row.prediction_time.toLowerCase()})`).join(", ")}; ` +
-    `route-history benchmark ${s.benchmark_auc.toFixed(3)}; the cheating model ${s.leaky_auc.toFixed(3)}. ` +
-    `Share of late flights on the 2-hour list: ${exactPercent(s.late_caught_2h)}. Exact figures are in RESULTS.md on GitHub.`;
+    `AUC ${s.by_time.map(row => `${row.auc.toFixed(3)} (${row.prediction_time.toLowerCase()})`).join(", ")}; ` +
+    `benchmark ${s.benchmark_auc.toFixed(3)}; cheating model ${s.leaky_auc.toFixed(3)}.`;
 }
 
 // Say plainly that the flight list is a sample, and how often the risky flights really were late
 function fillSampleNote() {
-  const risky = riskiestTenPercent(MAIN);
-  const riskyLate = risky.filter(f => f.late).length / risky.length;
   document.getElementById("sample-hint").textContent =
-    `To stay small, this page lists about 1 in 30 of the ${data.summary.flights.toLocaleString("en-GB")} test ` +
-    `flights, so quiet routes show only a few. The results below use all of them, and the listed ones behave ` +
-    `the same: about ${per100(riskyLate)} in 100 on the 2-hour warning list were late.`;
+    `Lists 1 in 30 of the ${data.summary.flights.toLocaleString("en-GB")} test flights; results below use all of them.`;
 }
 
 fetch("flights.json")
