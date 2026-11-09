@@ -208,6 +208,32 @@ A report more than 3 hours old counts as unknown. **All times are converted to o
 - **The arrival airport matters.** A storm there delays the arrival even if departure is on time.
 - **Coverage:** weather is known at the departure airport for 90.7% of test flights, and at the arrival airport for 88.2%.
 
+### Step 9: how sure are these scores? (`src/error_bars.py`)
+
+Every score above comes from one test set. A different set of flights would give a slightly different score, so I checked how much. The 695,298 test flights were resampled with replacement 1,000 times (a **bootstrap**) and every model was rescored on each copy. The range holds the middle 95% of those scores.
+
+| Model | AUC (95% range) | Late, among the riskiest 10% (95% range) |
+|---|---|---|
+| Benchmark: route's past delay rate | 0.589 (0.587–0.590) | 35.1% (34.7–35.4) |
+| Timetable only (weeks ahead) | 0.654 (0.652–0.655) | 45.2% (44.8–45.5) |
+| 4 hours before | 0.706 (0.705–0.708) | 59.4% (59.0–59.7) |
+| 2 hours before | 0.764 (0.763–0.765) | 73.4% (73.0–73.8) |
+| 2 hours before + weather | 0.793 (0.792–0.794) | 77.7% (77.3–78.0) |
+| 1 hour before | 0.807 (0.805–0.808) | 86.2% (85.8–86.5) |
+
+| Gain | AUC gain (95% range) | Resamples where it held |
+|---|---|---|
+| Timetable vs benchmark | +0.065 (0.063–0.066) | 1,000 of 1,000 |
+| 4 hours → 2 hours before | +0.058 (0.057–0.059) | 1,000 of 1,000 |
+| 2 hours → 1 hour before | +0.042 (0.042–0.043) | 1,000 of 1,000 |
+| 2 hours before, + weather | +0.029 (0.028–0.029) | 1,000 of 1,000 |
+| Weeks ahead → 2 hours before | +0.111 (0.109–0.112) | 1,000 of 1,000 |
+
+- **Each AUC moves by only about ±0.001**, because the test set is large.
+- **Every step in the story is real.** Each gain is at least 20 times its own error bar and held in every resample. The same resampled copies are used for both models in a gain, so the gain's range is narrower than either score's.
+- **A fresh retrain scored slightly lower.** This script retrains every model from scratch, with unchanged code. The retrained models score up to 0.0004 lower than in the tables above (the 2-hour model 0.7642 against 0.7645), and their riskiest-10% late rates up to 0.2 points lower (the 2-hour model 73.4% against 73.5%). Earlier scripts reproduced each other's scores exactly, so something about this run differs, perhaps the database copy or the laptop's setup; I haven't found what yet. The gap is a quarter of the error bar, so the other tables keep their original numbers.
+- **What this does not cover:** a different year or season. The ranges say how sure the scores are for January–April 2008, not for summer or for today.
+
 ## The timetable model in practice
 
 AUC is hard to act on, so `src/practical_value.py` asks what an airline would get from the **timetable model** (AUC 0.654), the one usable weeks ahead.
@@ -325,6 +351,7 @@ python src/what_drives_delays.py --db data/Fly.db        # which columns the tim
 python src/prediction_time.py --db data/Fly.db           # 4, 2 and 1 hours before departure
 python src/download_weather.py --db data/Fly.db          # about 230 MB into data/weather (needs curl)
 python src/model_weather.py --db data/Fly.db             # 2-hour model with and without weather
+python src/error_bars.py --db data/Fly.db --weather data/weather  # 95% ranges for every score; about 6 hours at --pct 30
 python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
 python src/airport_encoding.py --db data/Fly.db          # airports as categories vs past delay rates
 python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
