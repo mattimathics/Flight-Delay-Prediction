@@ -361,9 +361,9 @@ function reasons(f) {
       ${up ? "raises" : "lowers"} the chance by about ${Math.abs(points)} point${Math.abs(points) === 1 ? "" : "s"}</li>`;
   });
   const note = chosenTime === "risk_2h" ? "" : " These are for the 2-hour prediction.";
-  return `<div class="reasons"><p><strong>Why this chance?</strong> The biggest reasons, compared with an ordinary flight:</p>
+  return `<div class="reasons"><p><strong>Why this chance?</strong> The biggest ${items.length === 1 ? "reason" : "reasons"}, compared with an ordinary flight:</p>
     <ul>${items.join("")}</ul>
-    <p class="small">These are what the model weighed, not proof of what caused a delay.${note}</p></div>`;
+    <p class="small">Each reason is measured on its own, so they don't add up to the chance. They are what the model weighed, not proof of what caused a delay.${note}</p></div>`;
 }
 
 // The whole "What does the model know?" section, for the prediction time the visitor picked
