@@ -257,6 +257,24 @@ Across the 23,363 flights on the page (2-hour model, retrained on the 30% sample
 - **Plane age barely matters**, as in "What drives the predictions".
 - **These are the model's reasons, not causes.** (`results/flight_reasons.csv`)
 
+**Checked against Shapley values** (`src/check_reasons.py`). SHAP estimates Shapley values: each group's push averaged over every combination of the other groups, so the pushes add up exactly to the flight's chance minus an ordinary flight's. With 9 groups they can be computed exactly, by scoring each flight under all 512 combinations against the same 20 ordinary flights. On 2,000 random page flights (they added up to within 3e-14 points):
+
+| Group | Biggest reason: demo | Biggest reason: Shapley | Average push: demo | Average push: Shapley | Same direction |
+|---|---|---|---|---|---|
+| The plane flying in | 52.2% | 51.1% | 13.0 | 10.3 | 74.7% |
+| Time of day | 15.3% | 18.1% | 4.7 | 4.2 | 77.3% |
+| Airport's delays so far today | 10.8% | 16.2% | 6.3 | 6.5 | 93.6% |
+| Route and its airports | 10.4% | 8.7% | 5.5 | 4.1 | 88.7% |
+| Airline | 7.6% | 4.8% | 3.8 | 2.4 | 75.0% |
+| Flight length | 2.2% | 0.7% | 1.8 | 2.2 | 71.7% |
+| Flights scheduled in the same hour | 0.7% | 0.3% | 2.4 | 1.8 | 82.3% |
+| Month and day of the week | 0.9% | 0.3% | 2.1 | 1.6 | 86.9% |
+| Plane age | 0.0% | 0.0% | 0.8 | 0.6 | 80.9% |
+
+- **Both methods tell the same story:** the plane flying in first, then the time of day and the airport's delays today.
+- **They name the same biggest reason for 78.4% of flights**, and 2.1 of the demo's 3 reasons are in Shapley's top 3 on average (70.5%). (`results/reasons_vs_shapley.csv`, `results/reasons_vs_shapley_agreement.csv`)
+- **Where they differ:** when two facts only matter together, swapping one alone credits each with the whole effect, while Shapley splits it. A test in `tests/test_check_reasons.py` shows this with a late plane and an evening departure.
+
 ## The timetable model in practice
 
 AUC is hard to act on, so `src/practical_value.py` asks what an airline would get from the **timetable model** (AUC 0.654), the one usable weeks ahead.
@@ -356,7 +374,6 @@ The **precision-recall curve** draws that whole trade-off. Moving right, more la
 
 - Retrain and test on recent data, including summer.
 - Predict cancellations too.
-- Check the per-flight reasons against a standard method such as SHAP.
 
 ## Run every script
 
@@ -377,6 +394,7 @@ python src/model_weather.py --db data/Fly.db             # 2-hour model with and
 python src/error_bars.py --db data/Fly.db --weather data/weather  # 95% ranges for every score; about 6 hours at --pct 30
 python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
 python src/explain_flights.py --db data/Fly.db --show-pct 1  # adds each listed flight's reasons to docs/flights.json
+python src/check_reasons.py --show-pct 1                 # compares those reasons with exact Shapley values
 python src/airport_encoding.py --db data/Fly.db          # airports as categories vs past delay rates
 python src/time_of_day.py --db data/Fly.db               # redraws images/delay_rate_by_time_of_day.png
 python src/findings.py --db data/Fly.db                  # day, season and plane-age tables and charts
