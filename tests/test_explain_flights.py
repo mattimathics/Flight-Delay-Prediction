@@ -52,3 +52,13 @@ def test_end_to_end_on_the_small_database(db):
     assert list(pushes.columns) == list(explain_flights.GROUPS) and len(pushes) == 30
     summary = explain_flights.reason_summary(pushes)
     assert np.isclose(summary["share_biggest_reason"].sum(), 1)
+
+
+def test_shapley_pushes_add_up_to_the_gap_from_an_ordinary_flight():
+    flights = pd.DataFrame({col: [1.0, 2.0] for col in explain_flights.FEATURES})
+    flights["PlanePrevDepDelay"] = [60.0, 0.0]
+    references = flights.assign(PlanePrevDepDelay=[10.0, 10.0])
+    pushes, baseline = explain_flights.shapley_pushes(FakeModel(), flights, references)
+    assert np.isclose(baseline, 10)  # ordinary flights: 10 minutes late -> 10%
+    # 60 minutes late -> 60%, so the pushes add up to 50; 0 minutes -> 0%, so -10
+    assert np.allclose(pushes.sum(axis=1), [50, -10])
