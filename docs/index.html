@@ -102,6 +102,7 @@
   .bar-fill.late { background: var(--late); }
   .bar-fill.random { background: var(--muted); }
   .score { margin: 6px 0 10px; }
+  .tip { margin: 10px 0 0; font-weight: 600; }
   .score .big { font-size: 2.4rem; display: block; }
   table { border-collapse: collapse; width: 100%; margin-top: 10px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
@@ -147,7 +148,7 @@
   <section class="card">
     <h2>How good is the model?</h2>
     <p class="small" id="tested"></p>
-    <p>Each day it puts the 1 in 10 flights it thinks are most likely to be late on a <strong>warning list</strong>.</p>
+    <p>It puts the 1 in 10 flights it thinks are most likely to be late on a <strong>warning list</strong>.</p>
     <p class="score"><span class="big higher" id="warned"></span> of them really were late.</p>
     <div id="compare"></div>
     <p id="headline" style="font-size:1.1rem;margin-top:12px"></p>
@@ -214,13 +215,6 @@ function chance(share) {
   if (share >= 0.995) return "Over 99%";
   if (share < 0.005) return "Under 1%";
   return percent(share);
-}
-
-// The sentence under a flight's chance, with the same limits as chance()
-function inEvery100(share) {
-  if (share >= 0.995) return "More than 99 in 100";
-  if (share < 0.005) return "Fewer than 1 in 100";
-  return `About ${per100(share)} in 100`;
 }
 
 // 688 -> "11 h 28 min", 45 -> "45 min", since nobody converts big minute counts in their head
@@ -348,10 +342,11 @@ function judgement(f, field) {
 }
 
 // Common-sense advice for each risk level (general advice, not a measured result)
+// What a traveller could do at each risk level
 const TIPS = {
-  high: "Allow extra time for connections.",
-  medium: "Allow a little extra time if your connection is tight.",
-  low: "Likely on time.",
+  high: "A delay is likely. Allow extra time for connections and check the flight status before you leave.",
+  medium: "Check the flight status before you leave, and allow a little extra time if your connection is tight.",
+  low: "Likely on time. No need to change your plans.",
 };
 
 // One bar per prediction time, skipping any the data file doesn't have; bars take the risk colour
@@ -371,7 +366,6 @@ function barsOverTime(f) {
 
 function showFlight(f) {
   shownFlight = f;
-  const average = data.summary.late_overall;
   const level = riskLevel(f, chosenTime);
   const verdict = f.late
     ? `<span class="verdict late">Late by ${duration(f.arrival_delay)}</span>`
@@ -388,8 +382,7 @@ function showFlight(f) {
         <div class="small">Chance of arriving 15+ min late</div>
         <div class="big ${{high: "higher", medium: "medium", low: "lower"}[level]}">${chance(f[chosenTime])}</div>
         <span class="risk ${level}">${level[0].toUpperCase() + level.slice(1)} risk</span>
-        <div class="small">${inEvery100(f[chosenTime])} flights like this arrive late (average: ${per100(average)}).</div>
-        <div class="small" style="margin-top:6px"><strong>${TIPS[level]}</strong></div>
+        <p class="tip">${TIPS[level]}</p>
       </div>
       <div class="box">
         <div class="small">What really happened</div>
