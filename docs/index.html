@@ -155,6 +155,8 @@
   button.secondary { background: var(--card); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 
   /* The answer */
+  .example-note { margin: 0 0 12px; padding: 8px 12px; border-left: 3px solid var(--signal); background: var(--bg);
+                  border-radius: 0 8px 8px 0; }
   .flight-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; }
   .answer { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
   .box { border-radius: 12px; padding: 16px; background: var(--bg); }
@@ -401,7 +403,8 @@ const TIMES = [
 // The headline prediction: 2 hours before departure, the same model the README leads with
 const MAIN = "risk_2h";
 let chosenTime = MAIN;  // the prediction time the visitor picked; starts at the headline one
-let shownFlight = null;  // the flight on screen, so changing the time can redraw it
+let shownFlight = null;
+let introFlight = null;  // the flight the page opens on, labelled as an example  // the flight on screen, so changing the time can redraw it
 
 const airport = document.getElementById("airport");
 const destination = document.getElementById("destination");
@@ -643,13 +646,27 @@ const TIPS = {
   low: "Likely on time.",
 };
 
+// A middle time that sits 5+ points above or below both ends, e.g. ", peaking at 58% 4 hours before".
+// Without it, "went up from 44% to 52%" would hide a 58% in between
+function turningPoint(f, times) {
+  const ends = [f[times[0][0]], f[times[times.length - 1][0]]].map(per100);
+  let best = null;
+  times.slice(1, -1).forEach(([field, label]) => {
+    const value = per100(f[field]);
+    const gap = Math.max(value - Math.max(...ends), Math.min(...ends) - value);
+    if (gap >= 5 && (!best || gap > best.gap)) best = { gap, value, field, label, peak: value > Math.max(...ends) };
+  });
+  if (!best) return "";
+  return `, ${best.peak ? "peaking at" : "dipping to"} ${chance(f[best.field])} ${best.label.toLowerCase()}`;
+}
+
 // One bar per prediction time, skipping any the data file doesn't have; bars take the risk colour
 function barsOverTime(f) {
   const times = TIMES.filter(([field]) => f[field] !== null && f[field] !== undefined);
   const first = f[times[0][0]], last = f[times[times.length - 1][0]];
   const change = Math.round((last - first) * 100);
   const trend = Math.abs(change) < 3 ? `It stayed about the same, at around ${chance(last)}.`
-    : `It went ${change > 0 ? "up" : "down"} from ${chance(first)} ${times[0][1].toLowerCase()} to ${chance(last)} ${times[times.length - 1][1].toLowerCase()}.`;
+    : `It went ${change > 0 ? "up" : "down"} from ${chance(first)} ${times[0][1].toLowerCase()} to ${chance(last)} ${times[times.length - 1][1].toLowerCase()}${turningPoint(f, times)}.`;
   const rows = times.map(([field, label]) => `
     <div class="time-row${field === chosenTime ? " chosen" : ""}"><span>${label.replace(" hours", " h").replace(" hour", " h")}</span>
       <div class="time-track"><div class="time-fill ${riskLevel(f, field)}" style="width:${percent(f[field])}"></div></div>
@@ -664,7 +681,10 @@ function showFlight(f) {
     ? `<span class="verdict late">Late by ${duration(f.arrival_delay)}</span>`
     : `<span class="verdict ok">On time</span>`;
   result.hidden = false;
-  result.innerHTML = `
+  // Say plainly that the opening flight was chosen, so it isn't mistaken for a typical result
+  const example = f === introFlight && chosenTime === MAIN
+    ? `<p class="small example-note">Example: a flight the model caught. Press <strong>Show a mistake</strong> to see where it goes wrong.</p>` : "";
+  result.innerHTML = `${example}
     <h2 class="visually-hidden">${place(f.origin)} to ${place(f.dest)}</h2>
     <div class="route">
       <div><div class="code">${f.origin}</div><div class="city">${place(f.origin)}</div></div>
@@ -732,6 +752,19 @@ function jumpTo(f) {
   showFlight(f);
 }
 
+// The flight the page opens on: a clear catch at 2 hours, so a first visit shows what the model is for.
+// Picked by a fixed rule, never at random, so every visitor sees the same one: on the warning list,
+// really late, chance 70%+; then the busiest route (most flights to choose from), the highest chance,
+// and the earliest departure
+function pickIntroFlight() {
+  const routeSize = countBy(flights.map(f => ({ route: f.origin + f.dest })), "route");
+  const caught = flights.filter(f => onWarningList(f, MAIN) && f.late && f[MAIN] >= 0.7);
+  caught.sort((a, b) => routeSize[b.origin + b.dest] - routeSize[a.origin + a.dest]
+    || b[MAIN] - a[MAIN]
+    || (a.date + clock(a.scheduled_departure)).localeCompare(b.date + clock(b.scheduled_departure)));
+  return caught[0];
+}
+
 // Jump to a random flight from the warning list for the prediction time the visitor picked
 function showRiskyFlight() {
   const risky = riskiestTenPercent(chosenTime);
@@ -739,11 +772,18 @@ function showRiskyFlight() {
   jumpTo(f);
 }
 
-// Jump to a random flight the model got wrong at the chosen time: a false alarm or a miss
+// Jump to a random confident mistake at the chosen time. Picking any wrong flight mostly found
+// near-misses (a 23% flight 16 minutes late), which teach nothing; a confident mistake shows what
+// the model can't see. False alarms: warned at 70%+ but on time. Misses: 15% or less but an hour+ late
 function showMistake() {
-  const wrong = flights.filter(f => onWarningList(f, chosenTime) !== Boolean(f.late));
-  const f = wrong[Math.floor(Math.random() * wrong.length)];
-  jumpTo(f);
+  const falseAlarms = flights.filter(f => onWarningList(f, chosenTime) && f[chosenTime] >= 0.7 && !f.late);
+  const misses = flights.filter(f => f[chosenTime] <= 0.15 && f.late && f.arrival_delay >= 60);
+  // Weeks before, no flight reaches 70%, so only misses exist; if both are empty, any mistake will do
+  let pool = [falseAlarms, misses].filter(group => group.length > 0);
+  if (pool.length === 0) pool = [flights.filter(f => onWarningList(f, chosenTime) !== Boolean(f.late))];
+  // Pick a group first, then a flight, so both kinds of mistake turn up about equally often
+  const group = pool[Math.floor(Math.random() * pool.length)];
+  jumpTo(group[Math.floor(Math.random() * group.length)]);
 }
 
 // 0.735 -> "74", for "about 74 in every 100" sentences
@@ -819,6 +859,8 @@ fetch("flights.json")
     
     fillStats();
     fillSampleNote();
+    introFlight = pickIntroFlight();
+    jumpTo(introFlight);
     airport.addEventListener("change", () => { fillDestinations(); fillFlights(); });
     destination.addEventListener("change", fillFlights);
     document.getElementById("check").addEventListener("click", showChosenFlight);
