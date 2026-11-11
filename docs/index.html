@@ -17,7 +17,15 @@
 <!-- Fonts: Bricolage Grotesque (bold display and body) with JetBrains Mono for codes, labels and data -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=JetBrains+Mono:wght@400;700&family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@500;800&family=EB+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<script>
+  // Quest mode: an optional fantasy look, off by default; turned on by the switch or a ?theme=rpg link
+  try {
+    const asked = new URLSearchParams(location.search).get("theme");
+    if (asked === "rpg" || (asked === null && localStorage.getItem("theme") === "rpg"))
+      document.documentElement.dataset.theme = "rpg";
+  } catch (e) { /* storage blocked: stay on the normal look */ }
+</script>
 <style>
   :root {
     --bg: #f4f6f9; --card: #ffffff; --text: #1a2130; --muted: #5d6573; --line: #e1e5eb;
@@ -180,11 +188,58 @@
     .bar-row { grid-template-columns: 7.5rem 1fr 2.5rem; }
     .time-row { grid-template-columns: 6.9rem 1fr 4.2rem; gap: 8px; padding: 6px; }
   }
+
+  /* ---------- Quest mode (opt-in): parchment, leather and ornate frames ---------- */
+  .quest-toggle { float: right; margin: 0 0 8px 12px; width: auto; padding: 6px 12px; border-radius: 999px;
+                  font-size: 0.85rem; cursor: pointer; background: transparent; color: var(--hero-muted);
+                  border: 1px solid var(--hero-muted); }
+  :root[data-theme="rpg"] {
+    --bg: #e9d7ae; --card: #f6ead0; --text: #2b1a0c; --muted: #6b4f2c; --line: #b48a4a;
+    --accent: #7a1d1d; --accent-soft: #ecd3b0;
+    --late: #8e1b1b; --late-soft: #f0cfc2; --ok: #2e5a27; --ok-soft: #d6e2bf; --mid: #a3620f;
+    --hero: #3a2414; --hero-text: #f4dfa8; --hero-muted: #d8bf86;
+  }
+  :root[data-theme="rpg"] body {
+    font-family: "EB Garamond", Georgia, serif; font-size: 18px;
+    /* Parchment: warm stains and a faint fibre grain, all drawn in CSS so there's no image to load */
+    background:
+      radial-gradient(ellipse at 15% 10%, rgba(120, 72, 20, 0.18), transparent 45%),
+      radial-gradient(ellipse at 85% 70%, rgba(120, 72, 20, 0.16), transparent 50%),
+      repeating-linear-gradient(0deg, rgba(90, 60, 20, 0.035) 0 2px, transparent 2px 5px),
+      var(--bg);
+  }
+  :root[data-theme="rpg"] .hero {
+    /* Leather with a lantern glow from above */
+    background:
+      radial-gradient(ellipse at 50% -20%, rgba(255, 196, 92, 0.35), transparent 60%),
+      repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.06) 0 3px, transparent 3px 7px),
+      linear-gradient(180deg, #4a2d18, #2a180c);
+    border-bottom: 4px double #c9a25a;
+  }
+  :root[data-theme="rpg"] h1 { font-family: "Cinzel Decorative", Georgia, serif; font-weight: 900;
+    letter-spacing: 0; text-shadow: 0 2px 0 #000, 0 0 24px rgba(255, 190, 90, 0.45); }
+  :root[data-theme="rpg"] h2, :root[data-theme="rpg"] .section-title, :root[data-theme="rpg"] summary,
+  :root[data-theme="rpg"] .reasons strong { font-family: "Cinzel", Georgia, serif; font-weight: 800; letter-spacing: 0.02em; }
+  :root[data-theme="rpg"] h2::before, :root[data-theme="rpg"] h2::after { content: " ❦ "; color: var(--line); font-weight: 400; }
+  :root[data-theme="rpg"] .mono, :root[data-theme="rpg"] .eyebrow, :root[data-theme="rpg"] label,
+  :root[data-theme="rpg"] .when-label, :root[data-theme="rpg"] .meter-labels, :root[data-theme="rpg"] .flight-meta,
+  :root[data-theme="rpg"] .route .code, :root[data-theme="rpg"] .num, :root[data-theme="rpg"] th,
+  :root[data-theme="rpg"] .score-label, :root[data-theme="rpg"] .big { font-family: "Cinzel", Georgia, serif; }
+  :root[data-theme="rpg"] label select, :root[data-theme="rpg"] button { font-family: "EB Garamond", Georgia, serif; }
+  /* Ornate frames: a double gilt border with a fine inner rule */
+  :root[data-theme="rpg"] .card { border: 3px double var(--line); border-radius: 6px;
+    box-shadow: inset 0 0 0 6px var(--card), inset 0 0 0 7px rgba(180, 138, 74, 0.6), 0 10px 26px rgba(43, 26, 12, 0.28); }
+  :root[data-theme="rpg"] .box, :root[data-theme="rpg"] .score { background: rgba(233, 215, 174, 0.55);
+    border: 1px solid rgba(180, 138, 74, 0.6); border-radius: 4px; }
+  :root[data-theme="rpg"] button.primary { background: linear-gradient(180deg, #8e2424, #5e1212); color: #f4dfa8;
+    border-color: #c9a25a; }
+  :root[data-theme="rpg"] .quest-toggle { color: #f4dfa8; border-color: #c9a25a; }
 </style>
 </head>
 <body>
 <header class="hero">
   <div class="hero-inner">
+    <button type="button" class="quest-toggle" id="quest" aria-pressed="false">❖ Quest mode</button>
     <p class="eyebrow">Flight delay predictor</p>
     <h1>Will this flight be late?</h1>
     <p class="lead">Pick a real 2008 US flight. See the model's chance it would arrive 15+ minutes late, and what
@@ -589,6 +644,16 @@ function fillSampleNote() {
     `You can pick from ${flights.length.toLocaleString("en-GB")} sample flights. The scores below were tested on all ` +
     `${data.summary.flights.toLocaleString("en-GB")}.`;
 }
+
+// The Quest mode switch: flips the fantasy look on or off and remembers the choice in this browser
+const quest = document.getElementById("quest");
+quest.setAttribute("aria-pressed", document.documentElement.dataset.theme === "rpg");
+quest.addEventListener("click", () => {
+  const on = document.documentElement.dataset.theme !== "rpg";
+  if (on) document.documentElement.dataset.theme = "rpg"; else delete document.documentElement.dataset.theme;
+  quest.setAttribute("aria-pressed", on);
+  try { localStorage.setItem("theme", on ? "rpg" : "normal"); } catch (e) { /* storage blocked: fine */ }
+});
 
 fetch("flights.json")
   .then(response => response.json())
