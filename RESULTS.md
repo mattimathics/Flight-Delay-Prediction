@@ -358,7 +358,7 @@ The **precision-recall curve** draws that whole trade-off. Moving right, more la
 
 - **The data is old** (2004 to April 2008). Routes and schedules have changed, so the numbers won't carry over without retraining.
 - **The test covers only January–April 2008.** Summer thunderstorms are untested.
-- **Only flights that arrived are counted.** Cancelled and diverted flights can't be predicted.
+- **Only flights that arrived are counted.** Cancelled and diverted flights can't be predicted. In January–April 2008 that leaves out 70,096 of 2,389,217 flights (2.9%: 64,442 cancelled, 5,654 diverted); in 2004–2007 it leaves out 605,346 of 28,865,003 (2.1%). Counted with `SELECT COUNT(*), SUM(Cancelled = 1), SUM(Diverted = 1) FROM flightdetails` for each period.
 - **Weather covers 96 of the 100 busiest airports.** About 9% of test flights have no departure-airport report, about 12% no arrival-airport report.
 - **A quarter of flights have no plane age.**
 - **Comparisons are not causes.** Other things, like the airline or route, may explain why older planes or evening flights are late more often.
