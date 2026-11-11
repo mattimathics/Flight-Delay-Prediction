@@ -19,18 +19,48 @@
     --bg: #f4f6f9; --card: #ffffff; --text: #1a2130; --muted: #5d6573; --line: #e1e5eb;
     --accent: #1f5fa8; --accent-soft: #e3edf8;
     --late: #b3261e; --late-soft: #fbe6e4; --ok: #1e7a3c; --ok-soft: #e2f3e7; --mid: #c27a00;
+    --hero: #1f5fa8; --hero-text: #ffffff; --hero-muted: #d6e4f5;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #11141a; --card: #1a1f28; --text: #e8ebf0; --muted: #a2a9b5; --line: #2c3340;
       --accent: #7fb0eb; --accent-soft: #22344a;
       --late: #f08a82; --late-soft: #452321; --ok: #7fd197; --ok-soft: #1e3827; --mid: #e3a94f;
+      --hero: #1b2d47; --hero-text: #ffffff; --hero-muted: #b8c8dd;
     }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 720px; margin: 0 auto; padding: 40px 16px 48px; }
+  main { max-width: 720px; margin: 0 auto; padding: 0 16px 48px; }
+  /* A coloured band at the top with the search card overlapping it, like airline and flight-search sites */
+  .hero { background: var(--hero); color: var(--hero-text); padding: 40px 16px 72px; }
+  .hero-inner { max-width: 688px; margin: 0 auto; }
+  .hero .eyebrow { color: var(--hero-muted); }
+  .hero .lead { color: var(--hero-muted); margin: 0; }
+  main > .card:first-child { margin-top: -48px; box-shadow: 0 8px 24px rgba(16, 32, 64, 0.12); }
+
+  /* The flight's route, laid out like a boarding pass: big airport codes, city names under them */
+  .route { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; }
+  .route .code { font-size: 2rem; font-weight: 700; letter-spacing: 0.02em; line-height: 1.1; }
+  .route .city { color: var(--muted); font-size: 0.875rem; }
+  .route .to { text-align: right; }
+  .route .path { display: flex; align-items: center; gap: 6px; color: var(--muted); min-width: 64px; }
+  .route .path::before, .route .path::after { content: ""; flex: 1; border-top: 2px dashed var(--line); }
+  .flight-meta { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line); }
+
+  /* The risk meter: where this flight's chance sits on the Low / Medium / High scale */
+  .meter { margin: 14px 0 0; }
+  .meter-bar { position: relative; display: flex; height: 10px; border-radius: 999px; overflow: hidden; }
+  .meter-bar .seg.low { background: var(--ok); }
+  .meter-bar .seg.medium { background: var(--mid); }
+  .meter-bar .seg.high { background: var(--late); }
+  .meter-wrap { position: relative; }
+  .meter-pin { position: absolute; top: -5px; width: 4px; height: 20px; margin-left: -2px; border-radius: 2px;
+               background: var(--text); box-shadow: 0 0 0 2px var(--bg); }
+  .meter-labels { position: relative; height: 1.3em; margin-top: 6px; font-size: 0.8rem; color: var(--muted); }
+  .meter-labels span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .meter-note { margin: 2px 0 0; font-size: 0.8rem; color: var(--muted); }
   h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; }
   h2 { font-size: 1.25rem; line-height: 1.3; margin: 0 0 4px; }
   .eyebrow { margin: 0 0 6px; color: var(--accent); font-weight: 700; font-size: 0.85rem;
@@ -64,7 +94,7 @@
 
   /* The answer */
   .flight-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; }
-  .answer { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  .answer { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
   .box { border-radius: 12px; padding: 16px; background: var(--bg); }
   .big { font-size: 3rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
   .higher { color: var(--late); }
@@ -77,15 +107,15 @@
   .risk.high { background: var(--late-soft); color: var(--late); }
   .risk.low { background: var(--ok-soft); color: var(--ok); }
   .medium { color: var(--text); }
-  .legend { margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); list-style: none; font-size: 0.875rem; color: var(--muted); }
-  .legend li { margin: 2px 0; }
-  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
-  .legend .dot.high { background: var(--late); }
-  .legend .dot.medium { background: var(--mid); }
-  .legend .dot.low { background: var(--ok); }
-  .legend .here { color: var(--text); font-weight: 600; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .reasons { margin: 14px 0 0; }
   .reasons p { margin: 0 0 6px; }
+  .why-list { list-style: none; padding: 0; margin: 4px 0 8px; }
+  .why-list li { display: flex; gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .why-list li:last-child { border-bottom: 0; }
+  .why-list .arrow { font-size: 0.8rem; flex: none; }
+  .why-list .up .arrow { color: var(--late); }
+  .why-list .down .arrow { color: var(--ok); }
   .judgement { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--card); font-weight: 600; }
   details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
   summary { cursor: pointer; font-weight: 600; }
@@ -142,11 +172,15 @@
 </style>
 </head>
 <body>
+<header class="hero">
+  <div class="hero-inner">
+    <p class="eyebrow">Flight delay predictor</p>
+    <h1>Will this flight be late?</h1>
+    <p class="lead">Pick a real 2008 US flight. See the model's chance it would arrive 15+ minutes late, and what
+      really happened.</p>
+  </div>
+</header>
 <main>
-  <p class="eyebrow">Flight delay predictor</p>
-  <h1>Will this flight be late?</h1>
-  <p class="lead">Pick a real 2008 US flight. See the model's chance it would arrive 15+ minutes late, and what
-    really happened.</p>
 
   <section class="card">
     <div class="search">
@@ -277,7 +311,7 @@ function fillAirports() {
   // The 10 busiest first, since most visitors look for a big airport; then every airport A to Z
   const busiest = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 10);
   const all = Object.keys(counts).sort((a, b) => place(a).localeCompare(place(b)));
-  const options = codes => codes.map(code => `<option value="${code}">${place(code)}</option>`).join("");
+  const options = codes => codes.map(code => `<option value="${code}">${code} · ${place(code)}</option>`).join("");
   airport.innerHTML = `<optgroup label="Busiest airports">${options(busiest)}</optgroup>` +
     `<optgroup label="All airports, A to Z">${options(all)}</optgroup>`;
 }
@@ -287,7 +321,7 @@ function fillDestinations() {
   const counts = countBy(flights.filter(f => f.origin === airport.value), "dest");
   const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
   destination.innerHTML = codes.map(code =>
-    `<option value="${code}">${place(code)} (${counts[code]} ${counts[code] === 1 ? "flight" : "flights"})</option>`).join("");
+    `<option value="${code}">${code} · ${place(code)} (${counts[code]} ${counts[code] === 1 ? "flight" : "flights"})</option>`).join("");
 }
 
 function flightsOnRoute() {
@@ -299,7 +333,7 @@ function fillFlights() {
   // Every date is in 2008, so the drop-down leaves the year out to stay short
   flightPicker.innerHTML = flightsOnRoute().map((f, i) =>
     `<option value="${i}">${niceDate(f.date).replace(" 2008", "")}, ${clock(f.scheduled_departure)} · ` +
-    `${shortName(data.carriers[f.carrier])} ${f.flight_number}</option>`).join("");
+    `${f.carrier} ${f.flight_number} · ${shortName(data.carriers[f.carrier])}</option>`).join("");
 }
 
 // Words for each group of facts in docs/flights.json's reasons_2h (src/explain_flights.py),
@@ -320,22 +354,19 @@ const REASONS = {
   plane_age: f => "The plane's age",
 };
 
-// "Why": the model's biggest reasons in one or two plain sentences, biggest first
+// "Why": the model's biggest reasons as a short list, biggest first; ▲ raised the chance, ▼ lowered it
 function reasons(f) {
   if (!f.reasons_2h || !f.reasons_2h.length) return "";
-  // The reason labels start with a capital; inside a sentence they shouldn't
-  const words = group => { const text = REASONS[group](f); return text[0].toLowerCase() + text.slice(1); };
-  const list = items => items.length < 2 ? items.join("")
-    : items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
-  const up = f.reasons_2h.filter(([, points]) => points > 0).map(([group]) => words(group));
-  const down = f.reasons_2h.filter(([, points]) => points < 0).map(([group]) => words(group));
-  const sentences = [];
-  if (up.length) sentences.push(`<p>Raised by ${list(up)}.</p>`);
-  if (down.length) sentences.push(`<p>Lowered by ${list(down)}.</p>`);
+  const rows = f.reasons_2h.map(([group, points]) => {
+    const up = points > 0;
+    return `<li class="${up ? "up" : "down"}"><span class="arrow" aria-hidden="true">${up ? "▲" : "▼"}</span>
+      <span><span class="visually-hidden">${up ? "Raised by: " : "Lowered by: "}</span>${REASONS[group](f)}</span></li>`;
+  }).join("");
   const note = chosenTime === "risk_2h" ? "" : " (2-hour prediction)";
   return `<div class="reasons"><p><strong>Why</strong>${note}</p>
-    ${sentences.join("")}
-    <p class="small">What the model weighed most, not proven causes. It uses only what was known at the time of the prediction.</p></div>`;
+    <ul class="why-list">${rows}</ul>
+    <p class="small">▲ raised the chance, ▼ lowered it. These are what the model weighed most, not proven causes,
+      and it only uses what was known at the time.</p></div>`;
 }
 
 
@@ -358,18 +389,26 @@ function riskLevel(f, field) {
   return f[field] < data.summary.late_overall ? "low" : "medium";
 }
 
-// What each risk level means at the chosen time, so "High" isn't a mystery; the flight's own level is in bold
-function legend(field, level) {
-  const high = percent(warningCutoff[field]);
-  const average = percent(data.summary.late_overall);
-  const rows = [
-    // "About", because a flight right on a line can round to the line's number (e.g. 45.3% shows as 45% but is Medium)
-    ["high", `High: about ${high} or more (the riskiest 1 in 10)`],
-    ["medium", `Medium: about ${average} to ${high}`],
-    ["low", `Low: under about ${average} (below the average flight)`],
-  ];
-  return `<ul class="legend">${rows.map(([key, text]) =>
-    `<li class="${key === level ? "here" : ""}"><span class="dot ${key}"></span>${text}</li>`).join("")}</ul>`;
+// A Low / Medium / High scale with a pin at this flight's chance, so "High" isn't a mystery
+function meter(f, field) {
+  const average = data.summary.late_overall;      // below this: Low
+  const cutoff = warningCutoff[field];            // at or above this: High (the riskiest 1 in 10)
+  const pct = share => (share * 100).toFixed(1) + "%";
+  return `<div class="meter" aria-hidden="true">
+      <div class="meter-wrap">
+        <div class="meter-bar">
+          <span class="seg low" style="width:${pct(average)}"></span>
+          <span class="seg medium" style="width:${pct(cutoff - average)}"></span>
+          <span class="seg high" style="flex:1"></span>
+        </div>
+        <span class="meter-pin" style="left:${pct(f[field])}"></span>
+      </div>
+      <div class="meter-labels">
+        <span style="left:${pct(average)}">${percent(average)}</span>
+        <span style="left:${pct(cutoff)}">${percent(cutoff)}</span>
+      </div>
+    </div>
+    <p class="meter-note">High is the riskiest 1 in 10 flights. Low is below the average flight.</p>`;
 }
 
 // Was the model right? Judged by the warning list, the same yardstick as the results
@@ -400,8 +439,7 @@ function barsOverTime(f) {
     <div class="time-row${field === chosenTime ? " chosen" : ""}"><span>${label.replace(" hours", " h").replace(" hour", " h")}</span>
       <div class="time-track"><div class="time-fill ${riskLevel(f, field)}" style="width:${percent(f[field])}"></div></div>
       <span class="num">${chance(f[field])}</span></div>`).join("");
-  return `<p>${trend}</p>${rows}
-    <p class="small">Colours: <span class="higher">high</span>, <span class="mid-text">medium</span>, <span class="lower">low</span> risk</p>`;
+  return `<p>${trend}</p>${rows}`;
 }
 
 function showFlight(f) {
@@ -412,18 +450,21 @@ function showFlight(f) {
     : `<span class="verdict ok">On time</span>`;
   result.hidden = false;
   result.innerHTML = `
-    <div class="flight-title">
-      <h2>${place(f.origin)} → ${place(f.dest)}</h2>
+    <h2 class="visually-hidden">${place(f.origin)} to ${place(f.dest)}</h2>
+    <div class="route">
+      <div><div class="code">${f.origin}</div><div class="city">${place(f.origin)}</div></div>
+      <div class="path" aria-hidden="true">✈</div>
+      <div class="to"><div class="code">${f.dest}</div><div class="city">${place(f.dest)}</div></div>
     </div>
-    <p class="small" style="margin:0">${shortName(data.carriers[f.carrier])} flight ${f.flight_number} ·
-      ${niceDate(f.date)}, ${clock(f.scheduled_departure)}</p>
+    <p class="small flight-meta">${shortName(data.carriers[f.carrier])} flight ${f.flight_number} ·
+      ${niceDate(f.date)} · departs ${clock(f.scheduled_departure)}</p>
     <div class="answer">
       <div class="box">
         <div class="small">Chance of arriving 15+ min late</div>
         <div class="big ${{high: "higher", medium: "medium", low: "lower"}[level]}">${chance(f[chosenTime])}</div>
         <span class="risk ${level}">${level[0].toUpperCase() + level.slice(1)} risk</span>
+        ${meter(f, chosenTime)}
         <p class="tip">${TIPS[level]}</p>
-        ${legend(chosenTime, level)}
       </div>
       <div class="box">
         <div class="small">What really happened</div>
