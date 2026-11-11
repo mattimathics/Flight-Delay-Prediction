@@ -31,18 +31,20 @@
     --bg: #f4f6f9; --card: #ffffff; --text: #1a2130; --muted: #5d6573; --line: #e1e5eb;
     --accent: #1f5fa8; --accent-soft: #e3edf8;
     --late: #b3261e; --late-soft: #fbe6e4; --ok: #1e7a3c; --ok-soft: #e2f3e7; --mid: #c27a00;
-    --hero: #1f5fa8; --hero-text: #ffffff; --hero-muted: #d6e4f5;
+    --hero: #0c1420; --hero-text: #f4f6fa; --hero-muted: #a9b6c8; --signal: #ffc400;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #11141a; --card: #1a1f28; --text: #e8ebf0; --muted: #a2a9b5; --line: #2c3340;
       --accent: #7fb0eb; --accent-soft: #22344a;
       --late: #f08a82; --late-soft: #452321; --ok: #7fd197; --ok-soft: #1e3827; --mid: #e3a94f;
-      --hero: #1b2d47; --hero-text: #ffffff; --hero-muted: #b8c8dd;
+      --hero: #070c14; --hero-text: #f4f6fa; --hero-muted: #a9b6c8; --signal: #ffc400;
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
+  /* A faint dot grid, like a chart table, instead of a flat page */
+  body { margin: 0; color: var(--text);
+         background: radial-gradient(circle, var(--line) 1px, transparent 1.2px) 0 0 / 22px 22px, var(--bg);
          font: 16px/1.55 "Bricolage Grotesque", Georgia, serif; }
   /* Data looks like data: codes, labels and small numbers in a monospace, like a departures board */
   .mono, .eyebrow, label, .when-label, .meter-labels, .flight-meta, .route .code, .num, th, .score-label {
@@ -51,9 +53,23 @@
   label select { font-family: "Bricolage Grotesque", Georgia, serif; }
   main { max-width: 720px; margin: 0 auto; padding: 0 16px 48px; }
   /* A coloured band at the top with the search card overlapping it, like airline and flight-search sites */
-  .hero { background: var(--hero); color: var(--hero-text); padding: 40px 16px 72px; }
+  /* The header: a terminal at night. Chart grid lines, a warm runway glow, and a route arc with a plane on it */
+  .hero { position: relative; overflow: hidden; color: var(--hero-text); padding: 40px 16px 72px;
+    background:
+      radial-gradient(ellipse 60% 90% at 88% 110%, rgba(255, 196, 0, 0.22), transparent 70%),
+      repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 48px),
+      repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 48px),
+      linear-gradient(160deg, #13223a, var(--hero) 60%); }
+  .hero-inner { position: relative; z-index: 1; }
+  .hero .route-art { position: absolute; right: -140px; bottom: -6px; width: 560px; opacity: 0.85;
+                     pointer-events: none; }
+  .route-art .arc { fill: none; stroke: var(--signal); stroke-width: 2; stroke-dasharray: 6 9; opacity: 0.55;
+                    animation: dash 30s linear infinite; }
+  .route-art .dot { fill: var(--signal); }
+  .route-art .plane { fill: var(--signal); }
+  .hl { font-style: normal; color: var(--signal); }
   .hero-inner { max-width: 688px; margin: 0 auto; }
-  .hero .eyebrow { color: var(--hero-muted); }
+  .hero .eyebrow { color: var(--signal); }
   .hero .lead { color: var(--hero-muted); margin: 0; }
   main > .card:first-child { margin-top: -48px; box-shadow: 0 8px 24px rgba(16, 32, 64, 0.12); }
 
@@ -187,6 +203,8 @@
     .bar-row.compare-row { grid-template-columns: 8.5rem 1fr 5rem; }
     .bar-row { grid-template-columns: 7.5rem 1fr 2.5rem; }
     .time-row { grid-template-columns: 6.9rem 1fr 4.2rem; gap: 8px; padding: 6px; }
+    /* Phone: a smaller arc tucked in the corner, under the search card's edge, clear of the text */
+    .hero .route-art { width: 240px; right: -50px; bottom: -14px; opacity: 0.6; }
   }
 
   /* ---------- Quest mode (opt-in): parchment, leather and ornate frames ---------- */
@@ -197,7 +215,7 @@
     --bg: #e9d7ae; --card: #f6ead0; --text: #2b1a0c; --muted: #6b4f2c; --line: #b48a4a;
     --accent: #7a1d1d; --accent-soft: #ecd3b0;
     --late: #8e1b1b; --late-soft: #f0cfc2; --ok: #2e5a27; --ok-soft: #d6e2bf; --mid: #a3620f;
-    --hero: #3a2414; --hero-text: #f4dfa8; --hero-muted: #d8bf86;
+    --hero: #3a2414; --hero-text: #f4dfa8; --hero-muted: #d8bf86; --signal: #ffcf6b;
   }
   :root[data-theme="rpg"] body {
     font-family: "EB Garamond", Georgia, serif; font-size: 18px;
@@ -234,14 +252,48 @@
   :root[data-theme="rpg"] button.primary { background: linear-gradient(180deg, #8e2424, #5e1212); color: #f4dfa8;
     border-color: #c9a25a; }
   :root[data-theme="rpg"] .quest-toggle { color: #f4dfa8; border-color: #c9a25a; }
+
+  /* ---------- Motion: one staggered entrance on load, a split-flap flip when a flight appears ---------- */
+  @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  @keyframes flap { 0% { transform: rotateX(90deg); opacity: 0; } 60% { transform: rotateX(-12deg); opacity: 1; }
+                    100% { transform: none; } }
+  @keyframes grow { from { transform: scaleX(0); } }
+  @keyframes dash { to { stroke-dashoffset: -600; } }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-inner > * { animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+    .hero-inner > :nth-child(2) { animation-delay: 0.05s; }
+    .hero-inner > :nth-child(3) { animation-delay: 0.15s; }
+    .hero-inner > :nth-child(4) { animation-delay: 0.25s; }
+    main > .card { animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+    main > .card:nth-of-type(1) { animation-delay: 0.35s; }
+    main > .card:nth-of-type(3) { animation-delay: 0.5s; }
+    /* A new flight: codes and the big number flip in like a departures board, then the rest rises in turn */
+    #result .route .code, #result .big { transform-origin: 50% 0;
+      animation: flap 0.55s cubic-bezier(0.3, 0.8, 0.3, 1) both; }
+    #result .route .to .code { animation-delay: 0.08s; }
+    #result .big { animation-delay: 0.16s; }
+    #result .answer .box { animation: rise 0.5s ease-out both; }
+    #result .answer .box + .box { animation-delay: 0.1s; }
+    #result .reasons { animation: rise 0.5s ease-out 0.2s both; }
+    #result .over-time { animation: rise 0.5s ease-out 0.3s both; }
+    .time-fill, .bar-fill { transform-origin: left; animation: grow 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s both; }
+  }
 </style>
 </head>
 <body>
 <header class="hero">
+  <!-- Decoration only: a dashed great-circle route with a plane flying along it -->
+  <svg class="route-art" viewBox="0 0 560 200" aria-hidden="true">
+    <path id="arc" class="arc" d="M20 180 Q 280 -40 540 150"/>
+    <circle class="dot" cx="20" cy="180" r="5"/><circle class="dot" cx="540" cy="150" r="5"/>
+    <path class="plane" d="M0 -1.5 L-6 -1.5 L-9 -6 L-11 -6 L-9.5 -1.5 L-14 -1.5 L-16 -4 L-17.5 -4 L-16.5 0 L-17.5 4 L-16 4 L-14 1.5 L-9.5 1.5 L-11 6 L-9 6 L-6 1.5 L0 1.5 Q2 0 0 -1.5 Z">
+      <animateMotion dur="14s" repeatCount="indefinite" rotate="auto"><mpath href="#arc"/></animateMotion>
+    </path>
+  </svg>
   <div class="hero-inner">
     <button type="button" class="quest-toggle" id="quest" aria-pressed="false">❖ Quest mode</button>
     <p class="eyebrow">Flight delay predictor</p>
-    <h1>Will this flight be late?</h1>
+    <h1>Will this flight be <em class="hl">late?</em></h1>
     <p class="lead">Pick a real 2008 US flight. See the model's chance it would arrive 15+ minutes late, and what
       really happened.</p>
   </div>
