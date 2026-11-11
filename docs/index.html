@@ -71,6 +71,13 @@
   .risk.high { background: var(--late-soft); color: var(--late); }
   .risk.low { background: var(--ok-soft); color: var(--ok); }
   .medium { color: var(--text); }
+  .legend { margin: 8px 0 0; padding: 0; list-style: none; font-size: 0.9rem; color: var(--muted); }
+  .legend li { margin: 2px 0; }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .legend .dot.high { background: var(--late); }
+  .legend .dot.medium { background: var(--mid); }
+  .legend .dot.low { background: var(--ok); }
+  .legend .here { color: var(--text); font-weight: 600; }
   .reasons { margin: 14px 0 0; }
   .reasons p { margin: 0 0 6px; }
   .judgement { margin: 14px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--bg); font-weight: 600; }
@@ -332,6 +339,20 @@ function riskLevel(f, field) {
   return f[field] < data.summary.late_overall ? "low" : "medium";
 }
 
+// What each risk level means at the chosen time, so "High" isn't a mystery; the flight's own level is in bold
+function legend(field, level) {
+  const high = percent(warningCutoff[field]);
+  const average = percent(data.summary.late_overall);
+  const rows = [
+    // "About", because a flight right on a line can round to the line's number (e.g. 45.3% shows as 45% but is Medium)
+    ["high", `High: about ${high} or more (the riskiest 1 in 10)`],
+    ["medium", `Medium: about ${average} to ${high}`],
+    ["low", `Low: under about ${average} (below the average flight)`],
+  ];
+  return `<ul class="legend">${rows.map(([key, text]) =>
+    `<li class="${key === level ? "here" : ""}"><span class="dot ${key}"></span>${text}</li>`).join("")}</ul>`;
+}
+
 // Was the model right? Judged by the warning list, the same yardstick as the results
 function judgement(f, field) {
   const warned = onWarningList(f, field);
@@ -392,7 +413,7 @@ function showFlight(f) {
       </div>
     </div>
     <p class="judgement">${judgement(f, chosenTime)}</p>
-    <p class="small" style="margin:6px 0 0">High risk = on the warning list (riskiest 1 in 10).</p>
+    ${legend(chosenTime, level)}
     ${reasons(f)}
     <section class="over-time">
       <p class="section-title">How it changed closer to take-off</p>
