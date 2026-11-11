@@ -105,8 +105,37 @@
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
           padding: 20px; margin-top: 16px; }
 
-  /* The search box: three drop-downs and a button, like a flight-status site */
-  .search { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  /* The search box: two drop-downs for the route, then a calendar for the day, like a flight-booking site */
+  .search { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  /* The calendar: like a flight-booking date picker. Days with a flight on the route are bold
+     with a dot; other days are greyed. Days are never coloured by risk, so it can't give the answer away */
+  .calendar { margin-top: 14px; }
+  .months[hidden], .cal-grid[hidden] { display: none; }  /* display:grid/flex would override hidden */
+  .months { display: flex; gap: 6px; margin: 6px 0 10px; flex-wrap: wrap; }
+  .months button, .departures button { width: auto; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    font-size: 0.9rem; }
+  .months button[aria-pressed="true"], .departures button[aria-pressed="true"] {
+    background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .months button:disabled { opacity: 0.4; cursor: default; }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 44px)); gap: 4px; }
+  .cal-grid .dow { font-family: "JetBrains Mono", monospace; font-size: 0.7rem; color: var(--muted);
+    text-align: center; padding-bottom: 2px; }
+  .cal-grid button { position: relative; padding: 0; height: 40px; border-radius: 10px;
+    font-family: "JetBrains Mono", monospace; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  .cal-grid button:disabled { border-color: transparent; background: transparent; color: var(--muted);
+    opacity: 0.45; }
+  .cal-grid button.has { font-weight: 700; cursor: pointer; }
+  /* The dot under the number marks a day with a flight */
+  .cal-grid button.has::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 4px; height: 4px;
+    margin-left: -2px; border-radius: 50%; background: var(--accent); }
+  /* The chosen day in airport-sign yellow, the page's one accent */
+  .cal-grid button[aria-pressed="true"] { background: var(--signal); border-color: var(--signal); color: #11141a; }
+  .cal-grid button[aria-pressed="true"]::after { background: #11141a; }
+  /* Desktop: the day's flights sit beside the month, like a booking site; phone stacks them */
+  .cal-body { display: grid; grid-template-columns: auto 1fr; gap: 12px 28px; align-items: start; }
+  .dep-title { margin: 0 0 8px; font-weight: 600; }
+  .departures { display: flex; flex-wrap: wrap; gap: 8px; }
+  .departures button { font-family: "JetBrains Mono", monospace; font-size: 0.85rem; }
   label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; font-weight: 600;
           color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; min-width: 0; }
   select, button { font: inherit; font-size: 1rem; padding: 10px 12px; border-radius: 10px;
@@ -199,7 +228,7 @@
     h1 { font-size: 2.4rem; }
     .big, .score .big { font-size: 3.6rem; }
     .route .code { font-size: 2.1rem; }
-    .search, .answer { grid-template-columns: 1fr; }
+    .search, .answer, .cal-body { grid-template-columns: 1fr; }
     .bar-row.compare-row { grid-template-columns: 8.5rem 1fr 5rem; }
     .bar-row { grid-template-columns: 7.5rem 1fr 2.5rem; }
     .time-row { grid-template-columns: 6.9rem 1fr 4.2rem; gap: 8px; padding: 6px; }
@@ -244,6 +273,8 @@
   :root[data-theme="rpg"] .route .code, :root[data-theme="rpg"] .num, :root[data-theme="rpg"] th,
   :root[data-theme="rpg"] .score-label, :root[data-theme="rpg"] .big { font-family: "Cinzel", Georgia, serif; }
   :root[data-theme="rpg"] label select, :root[data-theme="rpg"] button { font-family: "EB Garamond", Georgia, serif; }
+  :root[data-theme="rpg"] .cal-grid button, :root[data-theme="rpg"] .cal-grid .dow,
+  :root[data-theme="rpg"] .departures button { font-family: "Cinzel", Georgia, serif; }
   /* Ornate frames: a double gilt border with a fine inner rule */
   :root[data-theme="rpg"] .card { border: 3px double var(--line); border-radius: 6px;
     box-shadow: inset 0 0 0 6px var(--card), inset 0 0 0 7px rgba(180, 138, 74, 0.6), 0 10px 26px rgba(43, 26, 12, 0.28); }
@@ -304,7 +335,14 @@
     <div class="search">
       <label>From <select id="airport"></select></label>
       <label>To <select id="destination"></select></label>
-      <label>Flight <select id="flight"></select></label>
+    </div>
+    <div class="calendar" role="group" aria-label="Pick a day and flight">
+      <span class="when-label">Day and flight</span>
+      <div class="months" id="months"></div>
+      <div class="cal-body">
+        <div class="cal-grid" id="cal-grid"></div>
+        <div><p class="small dep-title" id="dep-title"></p><div class="departures" id="departures"></div></div>
+      </div>
     </div>
     <div class="when" role="group" aria-label="When to predict">
       <span class="when-label">When to predict</span>
@@ -367,7 +405,12 @@ let shownFlight = null;  // the flight on screen, so changing the time can redra
 
 const airport = document.getElementById("airport");
 const destination = document.getElementById("destination");
-const flightPicker = document.getElementById("flight");
+const months = document.getElementById("months");
+const calGrid = document.getElementById("cal-grid");
+const departures = document.getElementById("departures");
+const depTitle = document.getElementById("dep-title");
+let chosenFlight = null;  // the flight picked in the calendar, shown by "Check flight"
+let shownMonth = null;    // the calendar month on screen, e.g. "2008-02"
 const result = document.getElementById("result");
 let data, flights;
 
@@ -447,11 +490,65 @@ function flightsOnRoute() {
     .sort((a, b) => (a.date + clock(a.scheduled_departure)).localeCompare(b.date + clock(b.scheduled_departure)));
 }
 
+// Routes with this many flights or fewer skip the grid: a whole month for one dot is just noise
+const FEW_FLIGHTS = 3;
+
+// The calendar for the chosen route, opened on the first month with a flight and its first flight picked
 function fillFlights() {
-  // Every date is in 2008, so the drop-down leaves the year out to stay short
-  flightPicker.innerHTML = flightsOnRoute().map((f, i) =>
-    `<option value="${i}">${niceDate(f.date).replace(" 2008", "")}, ${clock(f.scheduled_departure)} · ` +
-    `${f.carrier} ${f.flight_number} · ${shortName(data.carriers[f.carrier])}</option>`).join("");
+  const route = flightsOnRoute();
+  chosenFlight = route[0];
+  shownMonth = chosenFlight.date.slice(0, 7);
+  drawCalendar();
+}
+
+function drawCalendar() {
+  const route = flightsOnRoute();
+  const few = route.length <= FEW_FLIGHTS;
+  // Month tabs come from the data (Jan to Apr 2008), so they can't drift from the test period
+  const allMonths = [...new Set(flights.map(f => f.date.slice(0, 7)))].sort();
+  const routeMonths = new Set(route.map(f => f.date.slice(0, 7)));
+  months.hidden = calGrid.hidden = few;
+  months.innerHTML = allMonths.map(m => {
+    const name = new Date(m + "-01T12:00:00").toLocaleDateString("en-GB", { month: "short" });
+    return `<button type="button" data-month="${m}" aria-pressed="${m === shownMonth}"` +
+      `${routeMonths.has(m) ? "" : " disabled"}>${name}</button>`;
+  }).join("");
+  months.querySelectorAll("button").forEach(b => b.addEventListener("click", () => {
+    shownMonth = b.dataset.month;
+    drawCalendar();
+  }));
+
+  // The grid: Monday first, with blank cells before the 1st so weekdays line up
+  const first = new Date(shownMonth + "-01T12:00:00");
+  const daysInMonth = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const blanks = (first.getDay() + 6) % 7;
+  const daysWithFlights = new Set(route.map(f => f.date));
+  let cells = ["M", "T", "W", "T", "F", "S", "S"].map(d => `<span class="dow">${d}</span>`).join("");
+  cells += "<span></span>".repeat(blanks);
+  for (let day = 1; day <= daysInMonth; day++) {
+    const iso = `${shownMonth}-${String(day).padStart(2, "0")}`;
+    const has = daysWithFlights.has(iso);
+    cells += `<button type="button" data-date="${iso}" aria-label="${niceDate(iso)}${has ? "" : ", no flights"}"` +
+      ` class="${has ? "has" : ""}" aria-pressed="${chosenFlight.date === iso}"${has ? "" : " disabled"}>${day}</button>`;
+  }
+  calGrid.innerHTML = cells;
+  calGrid.querySelectorAll("button.has").forEach(b => b.addEventListener("click", () => {
+    chosenFlight = route.find(f => f.date === b.dataset.date);
+    drawCalendar();
+  }));
+
+  // The flights as chips: that day's flights, or every flight on a quiet route
+  const chips = few ? route : route.filter(f => f.date === chosenFlight.date);
+  depTitle.textContent = few ? `${route.length} ${route.length === 1 ? "flight" : "flights"} on this route`
+    : `Flights on ${niceDate(chosenFlight.date).replace(" 2008", "")}`;
+  departures.innerHTML = chips.map(f =>
+    `<button type="button" aria-pressed="${f === chosenFlight}" title="${shortName(data.carriers[f.carrier])}">` +
+    `${few ? niceDate(f.date).replace(" 2008", "") + " · " : ""}${clock(f.scheduled_departure)} · ` +
+    `${f.carrier} ${f.flight_number}</button>`).join("");
+  departures.querySelectorAll("button").forEach((b, i) => b.addEventListener("click", () => {
+    chosenFlight = chips[i];
+    drawCalendar();
+  }));
 }
 
 // Words for each group of facts in docs/flights.json's reasons_2h (src/explain_flights.py),
@@ -613,7 +710,7 @@ function fillTimeButtons() {
 }
 
 function showChosenFlight() {
-  showFlight(flightsOnRoute()[flightPicker.value]);
+  showFlight(chosenFlight);
 }
 
 // The listed flights the model rates riskiest at one prediction time: the top 10%,
@@ -628,8 +725,10 @@ function jumpTo(f) {
   airport.value = f.origin;
   fillDestinations();
   destination.value = f.dest;
-  fillFlights();
-  flightPicker.value = flightsOnRoute().indexOf(f);
+  // Open the calendar on this flight's month and day
+  chosenFlight = f;
+  shownMonth = f.date.slice(0, 7);
+  drawCalendar();
   showFlight(f);
 }
 
