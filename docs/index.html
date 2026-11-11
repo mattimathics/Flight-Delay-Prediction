@@ -108,9 +108,13 @@
   .compare-row .num { white-space: nowrap; }
   .bar-fill.late { background: var(--late); }
   .bar-fill.random { background: var(--muted); }
-  .score { margin: 6px 0 10px; }
+  .score { margin: 10px 0 12px; }
   .tip { margin: 10px 0 0; font-weight: 600; }
-  .score .big { font-size: 2.4rem; display: block; }
+  .score { background: var(--bg); border-radius: 12px; padding: 14px 16px; }
+  .score-label { display: block; font-weight: 600; color: var(--muted); }
+  .score .big { font-size: 2.6rem; display: block; line-height: 1.1; }
+  .score .big small { font-size: 1.2rem; color: var(--muted); font-weight: 600; }
+  .score p { margin: 8px 0 0; }
   table { border-collapse: collapse; width: 100%; margin-top: 10px; font-variant-numeric: tabular-nums; }
   th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
   th { font-size: 0.8rem; color: var(--muted); }
@@ -155,8 +159,11 @@
   <section class="card">
     <h2>How good is the model?</h2>
     <p class="small" id="tested"></p>
-    <p>It puts the 1 in 10 flights it thinks are most likely to be late on a <strong>warning list</strong>.</p>
-    <p class="score"><span class="big higher" id="warned"></span> of them really were late.</p>
+    <div class="score">
+      <span class="score-label">Its score</span>
+      <span class="big higher" id="warned"></span>
+      <p>It warns about the 1 in 10 flights it thinks are most likely to be late. <span id="warned-sentence"></span></p>
+    </div>
     <div id="compare"></div>
     <p id="headline" style="font-size:1.1rem;margin-top:12px"></p>
     <p id="misses"></p>
@@ -164,7 +171,7 @@
       <summary>Does it get better closer to take-off?</summary>
       <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>When the warning list is made</th><th>Late flights, out of every 100 on the list</th></tr></thead>
+          <thead><tr><th>When it predicts</th><th>Score (late flights out of every 100 it warned about)</th></tr></thead>
           <tbody id="table"></tbody>
         </table>
       </div>
@@ -479,21 +486,24 @@ function fillStats() {
   const twoHours = s.by_time.find(row => row.prediction_time === "2 hours before");
   const warned = twoHours.late_in_riskiest_10pct;
   const average = s.late_overall;
-  document.getElementById("warned").textContent = `${per100(warned)} in 100`;
+  // The score is the warning list's hit rate: literally true, and easy to compare with guessing
+  document.getElementById("warned").innerHTML = `${per100(warned)} <small>/ 100</small>`;
+  document.getElementById("warned-sentence").textContent =
+    `Out of every 100 flights it warned about, ${per100(warned)} really were late.`;
   // Two bars: the warning list (red, like High risk) against flights picked at random (grey)
   document.getElementById("compare").innerHTML = [
-    ["Its warning list", warned, "late"],
-    ["Random flights", average, "random"],
+    ["This model", warned, "late"],
+    ["Guessing", average, "random"],
   ].map(([label, share, cls]) => `
     <div class="bar-row compare-row"><span>${label}</span>
       <div class="bar-track"><div class="bar-fill ${cls}" style="width:${percent(share)}"></div></div>
-      <span class="num">${per100(share)} in 100</span></div>`).join("");
+      <span class="num">${per100(share)} / 100</span></div>`).join("");
   // How many times better than chance: 0.735 / 0.252 is about 3
   document.getElementById("headline").innerHTML =
-    `About <strong>${Math.round(warned / average)} times</strong> better than picking flights at random.`;
-  // The honest limit: only 0.292 of late flights make the list
+    `About <strong>${Math.round(warned / average)} times</strong> better than guessing.`;
+  // The limit: only 0.292 of late flights get a warning
   document.getElementById("misses").textContent =
-    `It doesn't catch every delay: about ${Math.round(s.late_caught_2h * 10)} in 10 late flights are on its list.`;
+    `It doesn't catch every delay: about ${Math.round(s.late_caught_2h * 10)} in 10 late flights get a warning.`;
   document.getElementById("tested").textContent =
     `Tested on ${s.flights.toLocaleString("en-GB")} flights it had never seen (Jan–Apr 2008), 2 hours before departure. ` +
     // 70,096 of the 2,389,217 flights in Jan–Apr 2008 were cancelled or diverted (counted in the database), so they have no arrival delay to score
@@ -501,8 +511,8 @@ function fillStats() {
   // One row per prediction time, then flights picked at random for comparison
   document.getElementById("table").innerHTML = s.by_time.map(row => `
     <tr><td>${row.prediction_time.replace("+ weather", "with weather").replace("Weeks ahead", "Weeks before")}</td>
-      <td>About ${per100(row.late_in_riskiest_10pct)}</td></tr>`).join("") +
-    `<tr><td>Flights picked at random</td><td>About ${per100(average)}</td></tr>`;
+      <td>${per100(row.late_in_riskiest_10pct)} / 100</td></tr>`).join("") +
+    `<tr><td>Guessing</td><td>${per100(average)} / 100</td></tr>`;
   // The exact technical scores, for readers who want them
   document.getElementById("technical").textContent =
     `AUC ${s.by_time.map(row => `${row.auc.toFixed(3)} (${row.prediction_time.toLowerCase()})`).join(", ")}; ` +
