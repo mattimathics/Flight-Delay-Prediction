@@ -474,7 +474,9 @@ function fillStats() {
   document.getElementById("misses").textContent =
     `It doesn't catch every delay: about ${Math.round(s.late_caught_2h * 10)} in 10 late flights are on its list.`;
   document.getElementById("tested").textContent =
-    `Tested on ${s.flights.toLocaleString("en-GB")} flights it had never seen (Jan–Apr 2008), 2 hours before departure.`;
+    `Tested on ${s.flights.toLocaleString("en-GB")} flights it had never seen (Jan–Apr 2008), 2 hours before departure. ` +
+    // 70,096 of the 2,389,217 flights in Jan–Apr 2008 were cancelled or diverted (counted in the database), so they have no arrival delay to score
+    `Cancelled and diverted flights (about 3 in 100) are left out, because they never arrived.`;
   // One row per prediction time, then flights picked at random for comparison
   document.getElementById("table").innerHTML = s.by_time.map(row => `
     <tr><td>${row.prediction_time.replace("+ weather", "with weather").replace("Weeks ahead", "Weeks before")}</td>
