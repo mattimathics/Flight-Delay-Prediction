@@ -21,15 +21,18 @@
 <style>
   :root {
     --bg: #f4f6f9; --card: #ffffff; --text: #1a2130; --muted: #5d6573; --line: #e1e5eb;
-    --accent: #1f5fa8; --accent-soft: #e3edf8;
+    /* One accent everywhere: airport-sign yellow, always with dark text on it (yellow text on white is unreadable) */
+    --accent: #ffc400; --accent-soft: #fff3c4; --on-accent: #11141a; --focus: #8a6400;
     --late: #b3261e; --late-soft: #fbe6e4; --ok: #1e7a3c; --ok-soft: #e2f3e7; --mid: #c27a00;
+    --mid-soft: #fbefd9; --mid-text: #8a5500;
     --hero: #0c1420; --hero-text: #f4f6fa; --hero-muted: #a9b6c8; --signal: #ffc400;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #11141a; --card: #1a1f28; --text: #e8ebf0; --muted: #a2a9b5; --line: #2c3340;
-      --accent: #7fb0eb; --accent-soft: #22344a;
+      --accent: #ffc400; --accent-soft: #3b3312; --on-accent: #11141a; --focus: #ffc400;
       --late: #f08a82; --late-soft: #452321; --ok: #7fd197; --ok-soft: #1e3827; --mid: #e3a94f;
+      --mid-soft: #3d2e14; --mid-text: #e3a94f;
       --hero: #070c14; --hero-text: #f4f6fa; --hero-muted: #a9b6c8; --signal: #ffc400;
     }
   }
@@ -63,6 +66,9 @@
   .hero-inner { max-width: 688px; margin: 0 auto; }
   .hero .eyebrow { color: var(--signal); }
   .hero .lead { color: var(--hero-muted); margin: 0; }
+  .hero-stats { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 0; margin: 18px 0 0; }
+  .hero-stats li { color: var(--hero-muted); font-size: 0.95rem; }
+  .hero-stats strong { color: var(--accent); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 1.15rem; }
   main > .card:first-child { margin-top: 24px; box-shadow: 0 8px 24px rgba(16, 32, 64, 0.12); }
 
   /* The flight's route, laid out like a boarding pass: big airport codes, city names under them */
@@ -91,11 +97,22 @@
   .eyebrow { margin: 0 0 6px; color: var(--accent); font-weight: 700; font-size: 0.85rem;
              text-transform: uppercase; letter-spacing: 0.06em; }
   p { margin: 0 0 12px; }
-  a { color: var(--accent); }
+  a { color: var(--text); text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  /* A clear ring for keyboard users, in the accent; darker on light pages so it stands out on white */
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   .lead { color: var(--muted); font-size: 1.15rem; font-weight: 300; }
   .small { color: var(--muted); font-size: 0.875rem; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
           padding: 20px; margin-top: 16px; }
+
+  /* Folded: one summary line instead of the route and calendar; booking apps do the same after you pick */
+  .chosen-line { display: none; align-items: center; justify-content: space-between; gap: 12px; }
+  .chosen-line strong { display: block; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 1.15rem; }
+  .chosen-line .small { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .chosen-line button { width: auto; cursor: pointer; white-space: nowrap; flex: none; }
+  .picker-card.folded .chosen-line { display: flex; }
+  .picker-card.folded .picker, .picker-card.folded #check, .picker-card.folded #sample-hint { display: none; }
+  .picker-card.folded .when { margin-top: 14px; }
 
   /* The search box: two drop-downs for the route, then a calendar for the day, like a flight-booking site */
   .search { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -107,7 +124,7 @@
   .months button, .departures button { width: auto; padding: 6px 12px; border-radius: 999px; cursor: pointer;
     font-size: 0.9rem; }
   .months button[aria-pressed="true"], .departures button[aria-pressed="true"] {
-    background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    background: var(--accent-soft); border-color: var(--accent); color: var(--text); font-weight: 600; }
   .months button:disabled { opacity: 0.4; cursor: default; }
   .cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 44px)); gap: 4px; }
   .cal-grid .dow { font-family: "JetBrains Mono", monospace; font-size: 0.7rem; color: var(--muted);
@@ -119,7 +136,7 @@
   .cal-grid button.has { font-weight: 700; cursor: pointer; }
   /* The dot under the number marks a day with a flight */
   .cal-grid button.has::after { content: ""; position: absolute; left: 50%; bottom: 5px; width: 4px; height: 4px;
-    margin-left: -2px; border-radius: 50%; background: var(--accent); }
+    margin-left: -2px; border-radius: 50%; background: var(--muted); }
   /* The chosen day in airport-sign yellow, the page's one accent */
   .cal-grid button[aria-pressed="true"] { background: var(--signal); border-color: var(--signal); color: #11141a; }
   .cal-grid button[aria-pressed="true"]::after { background: #11141a; }
@@ -137,14 +154,14 @@
   .when-label { font-size: 0.8rem; font-weight: 600; color: var(--muted); text-transform: uppercase;
                 letter-spacing: 0.03em; margin-right: 4px; }
   #when { display: flex; flex-wrap: wrap; gap: 8px; }
+  #when .short { display: none; }
   #when button { width: auto; padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 0.9rem; }
   #when button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent);
-                                      color: var(--accent); font-weight: 600; }
+                                      color: var(--text); font-weight: 600; }
   .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 14px; }
   .actions button { width: auto; cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  @media (prefers-color-scheme: dark) { button.primary { color: #11141a; } }
-  button.secondary { background: var(--card); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
+  button.secondary { background: var(--card); border-color: var(--text); color: var(--text); font-weight: 600; }
 
   /* The answer */
   .example-note { margin: 0 0 12px; padding: 8px 12px; border-left: 3px solid var(--signal); background: var(--bg);
@@ -172,7 +189,12 @@
   .why-list .arrow { font-size: 0.8rem; flex: none; }
   .why-list .up .arrow { color: var(--late); }
   .why-list .down .arrow { color: var(--ok); }
-  .judgement { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--card); font-weight: 600; }
+  .judgement { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--card); font-weight: 600;
+               border-left: 4px solid var(--line); }
+  /* Right or wrong at a glance: green when the model was right, amber for a false alarm, red for a miss */
+  .judgement.right { background: var(--ok-soft); color: var(--ok); border-left-color: var(--ok); }
+  .judgement.false-alarm { background: var(--mid-soft); color: var(--mid-text); border-left-color: var(--mid); }
+  .judgement.missed { background: var(--late-soft); color: var(--late); border-left-color: var(--late); }
   details { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
   summary { cursor: pointer; font-weight: 600; }
   .time-row { display: grid; grid-template-columns: 7rem 1fr 4.5rem; white-space: nowrap; gap: 10px; align-items: center;
@@ -199,7 +221,7 @@
   .bar-row.compare-row { grid-template-columns: 11rem 1fr 5.5rem; }
   .compare-row .num { white-space: nowrap; }
   .bar-fill.model { background: var(--accent); }
-  .model-score { color: var(--accent); }
+  .model-score { color: var(--text); }
   .bar-fill.random { background: var(--muted); }
   .score { margin: 10px 0 12px; }
   .tip { margin: 10px 0 0; font-weight: 700; }
@@ -218,6 +240,23 @@
     .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .actions .primary { grid-column: 1 / -1; }
     .actions button { width: 100%; padding: 10px 6px; font-size: 0.9rem; }
+    /* Thumb-sized: every tappable control at least 44px tall */
+    .months button, .departures button, #when button, .actions button, .chosen-line button, select { min-height: 44px; }
+    .cal-grid button { height: 44px; }
+    #when { display: grid; grid-template-columns: repeat(4, 1fr); width: 100%; gap: 6px; }
+    #when button { width: 100%; padding: 6px 4px; }
+    #when .long { display: none; }
+    #when .short { display: inline; }
+    /* Phone: a shorter header, so the picked flight's answer starts on the first screen */
+    .hero { padding: 28px 16px 26px; }
+    .hero .lead { font-size: 1rem; }
+    .hero-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+    .hero-stats li { font-size: 0.75rem; line-height: 1.3; }
+    .hero-stats strong { display: block; font-size: 1.05rem; }
+    .chosen-line button { padding: 8px 12px; font-size: 0.9rem; }
+    main { padding-top: 0; }
+    main > .card:first-child { margin-top: 14px; }
+    .hero .eyebrow { display: none; }  /* the title says it; every line counts on a phone */
     main { padding-top: 24px; }
     h1 { font-size: 2.4rem; }
     .big, .score .big { font-size: 3.6rem; }
@@ -228,6 +267,18 @@
     .time-row { grid-template-columns: 6.9rem 1fr 4.2rem; gap: 8px; padding: 6px; }
     /* Phone: a smaller arc tucked in the corner, under the search card's edge, clear of the text */
     .hero .route-art { width: 240px; right: -50px; bottom: -14px; opacity: 0.6; }
+  }
+
+  @media (min-width: 1100px) {
+    main { max-width: 1180px; display: grid; grid-template-columns: 460px 1fr; gap: 0 20px; align-items: start; }
+    .hero-inner { max-width: 1148px; }
+    main > #result { grid-column: 2; grid-row: 1 / span 2; margin-top: 24px; }
+    main > .card:not(.picker-card):not(#result), main > footer { grid-column: 1 / -1; }
+    /* Both are on screen side by side, so the picker never needs to fold */
+    .picker-card.folded .picker { display: block; }
+    .picker-card.folded #check { display: inline-block; }
+    .picker-card.folded .chosen-line { display: none; }
+    .search, .cal-body { grid-template-columns: 1fr; }
   }
 
   /* ---------- Motion: one staggered entrance on load, a split-flap flip when a flight appears ---------- */
@@ -272,11 +323,19 @@
     <h1>Will this flight be <em class="hl">late?</em></h1>
     <p class="lead">Pick a real 2008 US flight. See the model's chance it would arrive 15+ minutes late, and what
       really happened.</p>
+    <!-- The proof up front, so it's seen without scrolling; filled from the same summary as the score card -->
+    <ul class="hero-stats" id="hero-stats"></ul>
   </div>
 </header>
 <main>
 
-  <section class="card">
+  <section class="card picker-card" id="picker-card">
+    <!-- Once a flight is on screen, the route and calendar fold into this line, so the answer sits near the top -->
+    <div class="chosen-line">
+      <span id="chosen-summary"></span>
+      <button type="button" class="secondary" id="change" aria-controls="picker">Change</button>
+    </div>
+    <div class="picker" id="picker">
     <div class="search">
       <label>From <select id="airport"></select></label>
       <label>To <select id="destination"></select></label>
@@ -288,6 +347,7 @@
         <div class="cal-grid" id="cal-grid"></div>
         <div><p class="small dep-title" id="dep-title"></p><div class="departures" id="departures"></div></div>
       </div>
+    </div>
     </div>
     <div class="when" role="group" aria-label="When to predict">
       <span class="when-label">When to predict</span>
@@ -358,6 +418,7 @@ const depTitle = document.getElementById("dep-title");
 let chosenFlight = null;  // the flight picked in the calendar, shown by "Check flight"
 let shownMonth = null;    // the calendar month on screen, e.g. "2008-02"
 const result = document.getElementById("result");
+const pickerCard = document.getElementById("picker-card");
 let data, flights;
 
 // "1805" -> "18:05"
@@ -428,7 +489,7 @@ function fillDestinations() {
   const counts = countBy(flights.filter(f => f.origin === airport.value), "dest");
   const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
   destination.innerHTML = codes.map(code =>
-    `<option value="${code}">${code} · ${place(code)} (${counts[code]} ${counts[code] === 1 ? "flight" : "flights"})</option>`).join("");
+    `<option value="${code}">${code} · ${place(code)}</option>`).join("");
 }
 
 function flightsOnRoute() {
@@ -526,8 +587,7 @@ function reasons(f) {
   const note = chosenTime === "risk_2h" ? "" : " (2-hour prediction)";
   return `<div class="reasons"><p><strong>Why</strong>${note}</p>
     <ul class="why-list">${rows}</ul>
-    <p class="small">▲ raised the chance, ▼ lowered it. These are what the model weighed most, not proven causes,
-      and it only uses what was known at the time.</p></div>`;
+    <p class="small">▲ raised, ▼ lowered. Patterns, not proven causes, using only what was known at the time.</p></div>`;
 }
 
 
@@ -569,10 +629,17 @@ function meter(f, field) {
         <span style="left:${pct(cutoff)}">${percent(cutoff)}</span>
       </div>
     </div>
-    <p class="meter-note">High is the riskiest 1 in 10 flights. Low is below the average flight.</p>`;
+    <p class="meter-note">High: the riskiest 1 in 10 flights. Low: below average.</p>`;
 }
 
 // Was the model right? Judged by the warning list, the same yardstick as the results
+// Which kind of result this is, for the verdict box's colour
+function outcome(f, field) {
+  const warned = onWarningList(f, field);
+  if (warned === Boolean(f.late)) return "right";
+  return warned ? "false-alarm" : "missed";
+}
+
 function judgement(f, field) {
   const warned = onWarningList(f, field);
   if (warned && f.late) return "✓ Caught it: warned, and it was late.";
@@ -619,6 +686,7 @@ function barsOverTime(f) {
 
 function showFlight(f) {
   shownFlight = f;
+  fold(f);
   const level = riskLevel(f, chosenTime);
   const verdict = f.late
     ? `<span class="verdict late">Late by ${duration(f.arrival_delay)}</span>`
@@ -649,7 +717,7 @@ function showFlight(f) {
         ${verdict}
         <div class="small" style="margin-top:8px">${f.late ? "" : f.arrival_delay > 0
           ? `Arrived ${f.arrival_delay} min late, under the 15-minute line.` : "Arrived on or before schedule."}</div>
-        <p class="judgement">${judgement(f, chosenTime)}</p>
+        <p class="judgement ${outcome(f, chosenTime)}">${judgement(f, chosenTime)}</p>
       </div>
     </div>
     ${reasons(f)}
@@ -664,12 +732,21 @@ function showFlight(f) {
 function fillTimeButtons() {
   const holder = document.getElementById("when");
   holder.innerHTML = TIMES.map(([field, label]) =>
-    `<button type="button" data-field="${field}" aria-pressed="${field === chosenTime}">${label}</button>`).join("");
+    // Phones show the short form ("4 h") so all four fit on one row
+    `<button type="button" data-field="${field}" aria-pressed="${field === chosenTime}" aria-label="${label}">` +
+    `<span class="long">${label}</span><span class="short" aria-hidden="true">${label.replace("Weeks before", "Weeks").replace(" hours before", " h").replace(" hour before", " h")}</span></button>`).join("");
   holder.querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
     chosenTime = button.dataset.field;
     holder.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b === button));
     if (shownFlight) showFlight(shownFlight);
   }));
+}
+
+// Fold the picker into one line naming the flight on screen
+function fold(f) {
+  document.getElementById("chosen-summary").innerHTML = `<strong>${f.origin} → ${f.dest}</strong>` +
+    `<span class="small">${niceDate(f.date).replace(" 2008", "")} · ${clock(f.scheduled_departure)} · ${f.carrier} ${f.flight_number}</span>`;
+  pickerCard.classList.add("folded");
 }
 
 function showChosenFlight() {
@@ -741,6 +818,11 @@ function fillStats() {
   const average = s.late_overall;
   // The score is the warning list's hit rate: literally true, and easy to compare with guessing
   document.getElementById("warned").innerHTML = `${per100(warned)} <small>/ 100</small>`;
+  document.getElementById("hero-stats").innerHTML = [
+    `<strong>${per100(warned)} / 100</strong> warnings were right`,
+    `<strong>${Math.round(warned / average)}×</strong> better than guessing`,
+    `<strong>${s.flights.toLocaleString("en-GB")}</strong> unseen test flights`,
+  ].map(item => `<li>${item}</li>`).join("");
   document.getElementById("warned-sentence").textContent =
     `Out of every 100 flights it warned about, ${per100(warned)} really were late.`;
   // Two bars: the model's warning list (blue, the page's main colour) against flights picked at random (grey)
@@ -797,6 +879,11 @@ fetch("flights.json")
     airport.addEventListener("change", () => { fillDestinations(); fillFlights(); });
     destination.addEventListener("change", fillFlights);
     document.getElementById("check").addEventListener("click", showChosenFlight);
+    // Unfold to pick another flight; the one on screen stays until "Check flight" is pressed
+    document.getElementById("change").addEventListener("click", () => {
+      pickerCard.classList.remove("folded");
+      airport.focus();
+    });
     document.getElementById("risky").addEventListener("click", showRiskyFlight);
     document.getElementById("mistake").addEventListener("click", showMistake);
   });
