@@ -8,6 +8,8 @@ I analysed 31 million US domestic flights (2004–2008) in Python, R and SQL. My
 
 **[Try the live demo: pick a real 2008 flight and see what the model predicted](https://mattimathics.github.io/Flight-Delay-Prediction/)**
 
+[![The live demo: pick a flight, see the model's chance it arrives late and what really happened](docs/preview.png)](https://mattimathics.github.io/Flight-Delay-Prediction/)
+
 ## Key results
 
 | | Result |

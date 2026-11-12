@@ -207,6 +207,7 @@
   summary { cursor: pointer; font-weight: 600; }
   .time-row { display: grid; grid-template-columns: 7rem 1fr 4.5rem; white-space: nowrap; gap: 10px; align-items: center;
               margin-top: 6px; padding: 6px 8px; border-radius: 8px; }
+  .conclusion { margin-top: 12px; font-weight: 600; }
   .time-row.chosen { background: var(--accent-soft); font-weight: 600; }
   .time-track { position: relative; background: var(--line); border-radius: 999px; height: 14px; }
   .time-fill { height: 100%; border-radius: 999px; }
@@ -711,7 +712,19 @@ function barsOverTime(f) {
     <div class="time-row${field === chosenTime ? " chosen" : ""}"><span>${label.replace(" hours", " h").replace(" hour", " h")}</span>
       <div class="time-track"><div class="time-fill ${riskLevel(f, field)}" style="width:${percent(f[field])}"></div></div>
       <span class="num">${chance(f[field])}</span></div>`).join("");
-  return `<p>${trend}</p>${rows}`;
+  return `<p>${trend}</p><p class="small">Chance of being late (higher = more likely late)</p>${rows}
+    <p class="conclusion">${conclusion(f, times[times.length - 1])}</p>`;
+}
+
+// One plain takeaway, so nobody has to read the bars to know what they mean
+function conclusion(f, [field, label]) {
+  const when = `By ${label.toLowerCase()} take-off`;
+  const level = riskLevel(f, field);  // same cut-offs as the risk pill
+  if (level === "high") return f.late ? `${when}, the model was sure this flight would be late, and it was.`
+    : `${when}, the model expected a delay, but the flight was on time.`;
+  if (level === "low") return f.late ? "The model never saw this delay coming."
+    : `${when}, the model expected this flight to be on time, and it was.`;
+  return `${when}, the model saw some risk of delay, and the flight was ${f.late ? "late" : "on time"}.`;
 }
 
 function showFlight(f) {
