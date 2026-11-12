@@ -114,12 +114,22 @@
   .picker-card.folded .picker, .picker-card.folded #check, .picker-card.folded #sample-hint { display: none; }
   .picker-card.folded .when { margin-top: 14px; }
 
+  /* Four numbered steps; "Check flight" stays greyed out until all four are chosen */
+  .step { display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; margin-right: 4px; border-radius: 50%;
+          background: var(--accent); color: var(--on-accent); font-size: 0.75rem; font-weight: 700; }
+  button.primary:disabled { background: var(--line); border-color: var(--line); color: var(--muted); cursor: not-allowed; }
+  select:disabled { opacity: 0.55; }
+  .step-hint { margin: 14px 0 0; font-weight: 600; }
+  .step-hint:empty { display: none; }
+  .cal-empty { margin: 6px 0 0; }
+  .picker-card.folded #step-hint { display: none; }
+
   /* The search box: two drop-downs for the route, then a calendar for the day, like a flight-booking site */
   .search { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
   /* The calendar: like a flight-booking date picker. Days with a flight on the route are bold
      with a dot; other days are greyed. Days are never coloured by risk, so it can't give the answer away */
   .calendar { margin-top: 14px; }
-  .months[hidden], .cal-grid[hidden] { display: none; }  /* display:grid/flex would override hidden */
+  .months[hidden], .cal-grid[hidden], .cal-body[hidden], .cal-empty[hidden] { display: none; }  /* display:grid/flex would override hidden */
   .months { display: flex; gap: 6px; margin: 6px 0 10px; flex-wrap: wrap; }
   .months button, .departures button { width: auto; padding: 6px 12px; border-radius: 999px; cursor: pointer;
     font-size: 0.9rem; }
@@ -164,8 +174,6 @@
   button.secondary { background: var(--card); border-color: var(--text); color: var(--text); font-weight: 600; }
 
   /* The answer */
-  .example-note { margin: 0 0 12px; padding: 8px 12px; border-left: 3px solid var(--signal); background: var(--bg);
-                  border-radius: 0 8px 8px 0; }
   .flight-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; }
   .answer { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
   .box { border-radius: 12px; padding: 16px; background: var(--bg); }
@@ -279,6 +287,11 @@
     .picker-card.folded #check { display: inline-block; }
     .picker-card.folded .chosen-line { display: none; }
     .search, .cal-body { grid-template-columns: 1fr; }
+    /* Before the first check there's no answer to sit beside, so keep one centred column */
+    main:has(> #result[hidden]) > .card, main:has(> #result[hidden]) > footer {
+      grid-column: 1 / -1; width: 100%; max-width: 720px; justify-self: center; }
+    main:has(> #result[hidden]) .search { grid-template-columns: 1fr 1fr; }
+    main:has(> #result[hidden]) .cal-body { grid-template-columns: auto 1fr; }
   }
 
   /* ---------- Motion: one staggered entrance on load, a split-flap flip when a flight appears ---------- */
@@ -337,11 +350,12 @@
     </div>
     <div class="picker" id="picker">
     <div class="search">
-      <label>From <select id="airport"></select></label>
-      <label>To <select id="destination"></select></label>
+      <label><span><span class="step">1</span> From</span> <select id="airport"></select></label>
+      <label><span><span class="step">2</span> To</span> <select id="destination" disabled></select></label>
     </div>
     <div class="calendar" role="group" aria-label="Pick a day and flight">
-      <span class="when-label">Day and flight</span>
+      <span class="when-label"><span class="step">3</span> Day and flight</span>
+      <p class="small cal-empty" id="cal-empty">Choose From and To to see the days with flights.</p>
       <div class="months" id="months"></div>
       <div class="cal-body">
         <div class="cal-grid" id="cal-grid"></div>
@@ -350,11 +364,12 @@
     </div>
     </div>
     <div class="when" role="group" aria-label="When to predict">
-      <span class="when-label">When to predict</span>
+      <span class="when-label"><span class="step">4</span> When to predict</span>
       <span id="when"></span>
     </div>
+    <p class="small step-hint" id="step-hint" aria-live="polite"></p>
     <div class="actions">
-      <button class="primary" id="check" type="button">Check flight</button>
+      <button class="primary" id="check" type="button" disabled>Check flight</button>
       <button class="secondary" id="risky" type="button">Show risky flight</button>
       <button class="secondary" id="mistake" type="button">Show a mistake</button>
     </div>
@@ -405,9 +420,9 @@ const TIMES = [
 ];
 // The headline prediction: 2 hours before departure, the same model the README leads with
 const MAIN = "risk_2h";
-let chosenTime = MAIN;  // the prediction time the visitor picked; starts at the headline one
-let shownFlight = null;
-let introFlight = null;  // the flight the page opens on, labelled as an example  // the flight on screen, so changing the time can redraw it
+let chosenTime = null;   // the prediction time the visitor picked; none until they pick one
+let shownFlight = null;  // the flight on screen, so changing the time can redraw it
+let chosenDay = null;    // the calendar day picked, e.g. "2008-03-12"
 
 const airport = document.getElementById("airport");
 const destination = document.getElementById("destination");
@@ -480,15 +495,19 @@ function fillAirports() {
   const busiest = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 10);
   const all = Object.keys(counts).sort((a, b) => place(a).localeCompare(place(b)));
   const options = codes => codes.map(code => `<option value="${code}">${code} · ${place(code)}</option>`).join("");
-  airport.innerHTML = `<optgroup label="Busiest airports">${options(busiest)}</optgroup>` +
+  airport.innerHTML = `<option value="" disabled selected>Choose an airport</option>` +
+    `<optgroup label="Busiest airports">${options(busiest)}</optgroup>` +
     `<optgroup label="All airports, A to Z">${options(all)}</optgroup>`;
 }
 
 // Pick a route rather than a single day, so most choices offer many flights
 function fillDestinations() {
+  // Nothing to choose until a departure airport is picked
+  destination.disabled = !airport.value;
+  if (!airport.value) { destination.innerHTML = `<option value="">Choose From first</option>`; return; }
   const counts = countBy(flights.filter(f => f.origin === airport.value), "dest");
   const codes = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-  destination.innerHTML = codes.map(code =>
+  destination.innerHTML = `<option value="" disabled selected>Choose a destination</option>` + codes.map(code =>
     `<option value="${code}">${code} · ${place(code)}</option>`).join("");
 }
 
@@ -500,16 +519,24 @@ function flightsOnRoute() {
 // Routes with this many flights or fewer skip the grid: a whole month for one dot is just noise
 const FEW_FLIGHTS = 3;
 
-// The calendar for the chosen route, opened on the first month with a flight and its first flight picked
+// The calendar for the chosen route, opened on the first month with a flight; no day or flight picked yet
 function fillFlights() {
+  chosenFlight = null;
+  chosenDay = null;
   const route = flightsOnRoute();
-  chosenFlight = route[0];
-  shownMonth = chosenFlight.date.slice(0, 7);
+  shownMonth = route.length ? route[0].date.slice(0, 7) : null;
   drawCalendar();
 }
 
 function drawCalendar() {
   const route = flightsOnRoute();
+  // No route yet: show only the hint, not an empty calendar
+  const ready = route.length > 0;
+  document.getElementById("cal-empty").hidden = ready;
+  document.querySelector(".cal-body").hidden = !ready;
+  months.hidden = !ready;
+  updateCheck();
+  if (!ready) return;
   const few = route.length <= FEW_FLIGHTS;
   // Month tabs come from the data (Jan to Apr 2008), so they can't drift from the test period
   const allMonths = [...new Set(flights.map(f => f.date.slice(0, 7)))].sort();
@@ -536,24 +563,27 @@ function drawCalendar() {
     const iso = `${shownMonth}-${String(day).padStart(2, "0")}`;
     const has = daysWithFlights.has(iso);
     cells += `<button type="button" data-date="${iso}" aria-label="${niceDate(iso)}${has ? "" : ", no flights"}"` +
-      ` class="${has ? "has" : ""}" aria-pressed="${chosenFlight.date === iso}"${has ? "" : " disabled"}>${day}</button>`;
+      ` class="${has ? "has" : ""}" aria-pressed="${chosenDay === iso}"${has ? "" : " disabled"}>${day}</button>`;
   }
   calGrid.innerHTML = cells;
   calGrid.querySelectorAll("button.has").forEach(b => b.addEventListener("click", () => {
-    chosenFlight = route.find(f => f.date === b.dataset.date);
+    // A new day: its flights appear below, and the visitor picks one
+    chosenDay = b.dataset.date;
+    if (!chosenFlight || chosenFlight.date !== chosenDay) chosenFlight = null;
     drawCalendar();
   }));
 
   // The flights as chips: that day's flights, or every flight on a quiet route
-  const chips = few ? route : route.filter(f => f.date === chosenFlight.date);
+  const chips = few ? route : chosenDay ? route.filter(f => f.date === chosenDay) : [];
   depTitle.textContent = few ? `${route.length} ${route.length === 1 ? "flight" : "flights"} on this route`
-    : `Flights on ${niceDate(chosenFlight.date).replace(" 2008", "")}`;
+    : chosenDay ? `Flights on ${niceDate(chosenDay).replace(" 2008", "")}` : "Pick a day with a dot.";
   departures.innerHTML = chips.map(f =>
     `<button type="button" aria-pressed="${f === chosenFlight}" title="${shortName(data.carriers[f.carrier])}">` +
     `${few ? niceDate(f.date).replace(" 2008", "") + " · " : ""}${clock(f.scheduled_departure)} · ` +
     `${f.carrier} ${f.flight_number}</button>`).join("");
   departures.querySelectorAll("button").forEach((b, i) => b.addEventListener("click", () => {
     chosenFlight = chips[i];
+    chosenDay = chosenFlight.date;
     drawCalendar();
   }));
 }
@@ -692,10 +722,7 @@ function showFlight(f) {
     ? `<span class="verdict late">Late by ${duration(f.arrival_delay)}</span>`
     : `<span class="verdict ok">On time</span>`;
   result.hidden = false;
-  // Say plainly that the opening flight was chosen, so it isn't mistaken for a typical result
-  const example = f === introFlight && chosenTime === MAIN
-    ? `<p class="small example-note">Example: a flight the model caught. Press <strong>Show a mistake</strong> to see where it goes wrong.</p>` : "";
-  result.innerHTML = `${example}
+  result.innerHTML = `
     <h2 class="visually-hidden">${place(f.origin)} to ${place(f.dest)}</h2>
     <div class="route">
       <div><div class="code">${f.origin}</div><div class="city">${place(f.origin)}</div></div>
@@ -729,6 +756,23 @@ function showFlight(f) {
 }
 
 // One button per prediction time; picking one redraws the flight on screen, if any
+// Mark one prediction time as chosen
+function setTime(field) {
+  chosenTime = field;
+  document.querySelectorAll("#when button").forEach(b => b.setAttribute("aria-pressed", b.dataset.field === field));
+  updateCheck();
+}
+
+// "Check flight" works once all four steps are done; the hint names the next one
+function updateCheck() {
+  const next = !airport.value ? "Step 1: choose where the flight leaves from."
+    : !destination.value ? "Step 2: choose where it goes."
+    : !chosenFlight ? "Step 3: pick a day with a dot, then a flight."
+    : !chosenTime ? "Step 4: choose when to predict." : "";
+  document.getElementById("check").disabled = Boolean(next);
+  document.getElementById("step-hint").textContent = next;
+}
+
 function fillTimeButtons() {
   const holder = document.getElementById("when");
   holder.innerHTML = TIMES.map(([field, label]) =>
@@ -736,8 +780,7 @@ function fillTimeButtons() {
     `<button type="button" data-field="${field}" aria-pressed="${field === chosenTime}" aria-label="${label}">` +
     `<span class="long">${label}</span><span class="short" aria-hidden="true">${label.replace("Weeks before", "Weeks").replace(" hours before", " h").replace(" hour before", " h")}</span></button>`).join("");
   holder.querySelectorAll("button").forEach(button => button.addEventListener("click", () => {
-    chosenTime = button.dataset.field;
-    holder.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b === button));
+    setTime(button.dataset.field);
     if (shownFlight) showFlight(shownFlight);
   }));
 }
@@ -767,26 +810,15 @@ function jumpTo(f) {
   destination.value = f.dest;
   // Open the calendar on this flight's month and day
   chosenFlight = f;
+  chosenDay = f.date;
   shownMonth = f.date.slice(0, 7);
   drawCalendar();
   showFlight(f);
 }
 
-// The flight the page opens on: a clear catch at 2 hours, so a first visit shows what the model is for.
-// Picked by a fixed rule, never at random, so every visitor sees the same one: on the warning list,
-// really late, chance 70%+; then the busiest route (most flights to choose from), the highest chance,
-// and the earliest departure
-function pickIntroFlight() {
-  const routeSize = countBy(flights.map(f => ({ route: f.origin + f.dest })), "route");
-  const caught = flights.filter(f => onWarningList(f, MAIN) && f.late && f[MAIN] >= 0.7);
-  caught.sort((a, b) => routeSize[b.origin + b.dest] - routeSize[a.origin + a.dest]
-    || b[MAIN] - a[MAIN]
-    || (a.date + clock(a.scheduled_departure)).localeCompare(b.date + clock(b.scheduled_departure)));
-  return caught[0];
-}
-
 // Jump to a random flight from the warning list for the prediction time the visitor picked
 function showRiskyFlight() {
+  if (!chosenTime) setTime(MAIN);  // a shortcut fills in every step, using the headline 2-hour model
   const risky = riskiestTenPercent(chosenTime);
   const f = risky[Math.floor(Math.random() * risky.length)];
   jumpTo(f);
@@ -796,6 +828,7 @@ function showRiskyFlight() {
 // near-misses (a 23% flight 16 minutes late), which teach nothing; a confident mistake shows what
 // the model can't see. False alarms: warned at 70%+ but on time. Misses: 15% or less but an hour+ late
 function showMistake() {
+  if (!chosenTime) setTime(MAIN);
   const falseAlarms = flights.filter(f => onWarningList(f, chosenTime) && f[chosenTime] >= 0.7 && !f.late);
   const misses = flights.filter(f => f[chosenTime] <= 0.15 && f.late && f.arrival_delay >= 60);
   // Weeks before, no flight reaches 70%, so only misses exist; if both are empty, any mistake will do
@@ -874,8 +907,7 @@ fetch("flights.json")
     
     fillStats();
     fillSampleNote();
-    introFlight = pickIntroFlight();
-    jumpTo(introFlight);
+    updateCheck();
     airport.addEventListener("change", () => { fillDestinations(); fillFlights(); });
     destination.addEventListener("change", fillFlights);
     document.getElementById("check").addEventListener("click", showChosenFlight);
