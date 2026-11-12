@@ -363,6 +363,7 @@ The **precision-recall curve** draws that whole trade-off. Moving right, more la
 - **A quarter of flights have no plane age.**
 - **Comparisons are not causes.** Other things, like the airline or route, may explain why older planes or evening flights are late more often.
 - **The costs in Step 6 are made up** to show the method.
+- **The warning list is ranked across all four months at once.** An airline can't do that in real time: on 3 January it doesn't know April's flights. Ranking each day's flights separately (still 1 in 10) gives lower scores, and the gap grows closer to take-off. For the 2-hour model, 67.5 of every 100 flagged flights were late instead of 73.4, and it caught 26.8% of late flights instead of 29.2%. That is still 2.7 times the 25.2% you'd get by guessing. The figures are weeks before 45.2 → 44.1, 4 hours 59.4 → 54.2 and 1 hour 86.2 → 79.6, and the benchmark doesn't change. These use the predictions saved by `error_bars.py`, so the whole-period numbers match `results/error_bars.csv`. (`src/per_day_warning_list.py`, `results/per_day_warning_list.csv`)
 - **The models learn from a 30% sample (8.5 million flights)**, the most my laptop's memory could hold. 10% → 30% added only 0.004, so all the data would probably add very little.
 
 ## What I learned
@@ -394,6 +395,7 @@ python src/prediction_time.py --db data/Fly.db           # 4, 2 and 1 hours befo
 python src/download_weather.py --db data/Fly.db          # about 230 MB into data/weather (needs curl)
 python src/model_weather.py --db data/Fly.db             # 2-hour model with and without weather
 python src/error_bars.py --db data/Fly.db --weather data/weather  # 95% ranges for every score; about 6 hours at --pct 30
+python src/per_day_warning_list.py --db data/Fly.db   # warning list ranked per day vs all at once (needs error_bars.py first)
 python src/build_web_page.py --db data/Fly.db            # rebuilds docs/flights.json (adds weather if data/weather exists)
 python src/explain_flights.py --db data/Fly.db --show-pct 1  # each listed flight's Shapley reasons and 2-hour chance, into docs/flights.json
 python src/check_reasons.py --show-pct 1                 # compares the simpler one-at-a-time reasons with Shapley
